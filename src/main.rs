@@ -70,7 +70,7 @@ impl Machine {
                 return self.rom[(off >> 2) as usize];
             }
         } else {
-            debug_assert!(pc & 1 == 0);
+            assert!(pc & 1 == 0);
             let aligned_pc = pc & !3;
 
             let ilo = self.fetch_instruction(aligned_pc) >> 16;

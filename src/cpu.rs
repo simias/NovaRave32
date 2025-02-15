@@ -1,18 +1,22 @@
 //! Implementation of the RISC-rfdV RV32IMAC ISA
 
 use crate::{Machine, RAM, ROM};
-use log::info;
 use std::fmt;
+use log::info;
 
 pub struct Cpu {
     /// Program Counter
     pc: u32,
     /// 32 general purpose registers (x0 must always be 0)
     x: [u32; 32],
+    /// Machine status
+    mstatus: u32,
     /// Machine Interrupt Enable
     mie: u32,
     /// Machine Interrupt Pending
     mip: u32,
+    /// Machine Trap Vector base address
+    mtvec: u32,
     /// Contains the address of the last "Load-Reserved" instruction as long as it remains valid
     reservation: Option<u32>,
 }
@@ -22,8 +26,10 @@ impl Cpu {
         Cpu {
             pc: ROM.base,
             x: [0; 32],
+            mstatus: 0,
             mie: 0,
             mip: 0,
+            mtvec: ROM.base,
             reservation: None,
         }
     }
@@ -40,32 +46,41 @@ impl Cpu {
     }
 
     /// Set a new value for the given Control and Status Register, returning the previous value
-    fn csr_set(&mut self, csr: u32, v: u32) -> u32 {
+    fn csr_and_or(&mut self, csr: u32, and_mask: u32, or_mask: u32) -> u32 {
         // TODO Check CSR privileges and raise illegal-instruction if there's a violation
         // See "2.1. CSR Address Mapping Conventions" in the privileged architecture manual.
 
-        let prev;
+        let update_csr = |reg: &mut u32| -> u32 {
+            let prev = *reg;
+
+            *reg &= and_mask;
+            *reg |= or_mask;
+
+            prev
+        };
 
         match csr {
-            CSR_MIE => {
-                prev = self.mie;
-                self.mie = v;
-                if v != 0 {
-                    panic!("IRQ en {:x}", v);
+            CSR_MSTATUS => {
+                if or_mask != 0 {
+                    panic!("MSTATUS set {:x}", or_mask)
                 }
+
+                update_csr(&mut self.mstatus)
             }
-            CSR_MIP => {
-                prev = self.mip;
-                self.mip = v;
+            CSR_MIE => {
+                if or_mask != 0 {
+                    panic!("IRQ en {:x}", or_mask);
+                }
+                update_csr(&mut self.mie)
             }
-            CSR_MTVEC => {
-                prev = 0;
-                info!("SET MTVEC {:x}", v);
-            }
+            CSR_MIP => update_csr(&mut self.mip),
+            CSR_MTVEC => update_csr(&mut self.mtvec),
             _ => panic!("Unhandled CSR {:x} {:?}", csr, self),
         }
+    }
 
-        prev
+    fn csr_set(&mut self, csr: u32, v: u32) -> u32 {
+        self.csr_and_or(csr, 0, v)
     }
 }
 
@@ -117,7 +132,6 @@ pub fn step(m: &mut Machine) {
         // We take [op][funct3] as jump index
         let code = ((op >> 12) & 7) | ((op & 0x7c) << 1);
 
-        // Run handler
         INSTRUCTIONS_32[code as usize](m, op);
     } else {
         // Compressed instruction
@@ -255,23 +269,60 @@ fn i_slli(m: &mut Machine, op: u32) {
     m.cpu.xset(rd(op), v.checked_shl(s).unwrap_or(0));
 }
 
+fn i_srli(m: &mut Machine, op: u32) {
+    assert_eq!(op >> 25, 0);
+
+    let v = m.cpu.xget(rs1(op));
+    let s = shamt(op);
+
+    m.cpu.xset(rd(op), v.checked_shr(s).unwrap_or(0));
+}
+
 fn i_add(m: &mut Machine, op: u32) {
     let v1 = m.cpu.xget(rs1(op));
     let v2 = m.cpu.xget(rs2(op));
+    let sub = op >> 25;
 
-    let s = if (op >> 25) == 0 {
-        v1.wrapping_add(v2)
-    } else if (op >> 25) == 0x20 {
-        v1.wrapping_sub(v2)
-    } else {
-        panic!("Unsupported op {:}", op);
+    let r = match sub {
+        // add
+        0x00 => v1.wrapping_add(v2),
+        // mul
+        0x01 => v1.wrapping_mul(v2),
+        // sub
+        0x20 => v1.wrapping_sub(v2),
+        _ => panic!("Unsupported op {:x}", op),
     };
 
-    m.cpu.xset(rd(op), s)
+    m.cpu.xset(rd(op), r)
+}
+
+fn i_mulhu(m: &mut Machine, op: u32) {
+    assert_eq!(op >> 25, 1);
+
+    let v1 = m.cpu.xget(rs1(op)) as u64;
+    let v2 = m.cpu.xget(rs2(op)) as u64;
+
+    let p = v1 * v2;
+
+    m.cpu.xset(rd(op), (p >> 32) as u32);
 }
 
 fn i_lui(m: &mut Machine, op: u32) {
     m.cpu.xset(rd(op), op & 0xffff_f000)
+}
+
+fn i_xori(m: &mut Machine, op: u32) {
+    let v = m.cpu.xget(rs1(op));
+    let i = imm_20_se(op);
+
+    m.cpu.xset(rd(op), v ^ i);
+}
+
+fn i_ori(m: &mut Machine, op: u32) {
+    let v = m.cpu.xget(rs1(op));
+    let i = imm_20_se(op);
+
+    m.cpu.xset(rd(op), v | i);
 }
 
 fn i_andi(m: &mut Machine, op: u32) {
@@ -477,6 +528,15 @@ fn i_csrrs(m: &mut Machine, op: u32) {
     }
 }
 
+fn i_csrrci(m: &mut Machine, op: u32) {
+    let v = rs1(op).0 as u32;
+    let csr = imm_20(op);
+
+    let prev = m.cpu.csr_and_or(csr, !v, 0);
+
+    m.cpu.xset(rd(op), prev);
+}
+
 fn i_csrrwi(m: &mut Machine, op: u32) {
     let v = rs1(op).0 as u32;
     let csr = imm_20(op);
@@ -491,7 +551,7 @@ static INSTRUCTIONS_32: [fn(&mut Machine, op: u32); 256] = [
     i_xxx, i_xxx, i_xxx, i_xxx, i_xxx, i_xxx, i_xxx, i_xxx, // 0F
     i_xxx, i_xxx, i_xxx, i_xxx, i_xxx, i_xxx, i_xxx, i_xxx, // 17
     i_fence, i_xxx, i_xxx, i_xxx, i_xxx, i_xxx, i_xxx, i_xxx, // 1F
-    i_addi, i_slli, i_xxx, i_xxx, i_xxx, i_xxx, i_xxx, i_andi, // 27
+    i_addi, i_slli, i_xxx, i_xxx, i_xori, i_srli, i_ori, i_andi, // 27
     i_auipc, i_auipc, i_auipc, i_auipc, i_auipc, i_auipc, i_auipc, i_auipc, // 2F
     i_xxx, i_xxx, i_xxx, i_xxx, i_xxx, i_xxx, i_xxx, i_xxx, // 37
     i_xxx, i_xxx, i_xxx, i_xxx, i_xxx, i_xxx, i_xxx, i_xxx, // 3F
@@ -499,7 +559,7 @@ static INSTRUCTIONS_32: [fn(&mut Machine, op: u32); 256] = [
     i_xxx, i_xxx, i_xxx, i_xxx, i_xxx, i_xxx, i_xxx, i_xxx, // 4F
     i_xxx, i_xxx, i_xxx, i_xxx, i_xxx, i_xxx, i_xxx, i_xxx, // 57
     i_xxx, i_xxx, i_atomic_w, i_xxx, i_xxx, i_xxx, i_xxx, i_xxx, // 5F
-    i_add, i_xxx, i_xxx, i_xxx, i_xxx, i_xxx, i_xxx, i_xxx, // 67
+    i_add, i_xxx, i_xxx, i_mulhu, i_xxx, i_xxx, i_xxx, i_xxx, // 67
     i_lui, i_lui, i_lui, i_lui, i_lui, i_lui, i_lui, i_lui, // 6F
     i_xxx, i_xxx, i_xxx, i_xxx, i_xxx, i_xxx, i_xxx, i_xxx, // 77
     i_xxx, i_xxx, i_xxx, i_xxx, i_xxx, i_xxx, i_xxx, i_xxx, // 7F
@@ -515,7 +575,7 @@ static INSTRUCTIONS_32: [fn(&mut Machine, op: u32); 256] = [
     i_jalr, i_xxx, i_xxx, i_xxx, i_xxx, i_xxx, i_xxx, i_xxx, // CF
     i_xxx, i_xxx, i_xxx, i_xxx, i_xxx, i_xxx, i_xxx, i_xxx, // D7
     i_jal, i_xxx, i_xxx, i_xxx, i_xxx, i_xxx, i_xxx, i_xxx, // DF
-    i_xxx, i_csrrw, i_csrrs, i_xxx, i_xxx, i_csrrwi, i_xxx, i_xxx, // E7
+    i_xxx, i_csrrw, i_csrrs, i_xxx, i_xxx, i_csrrwi, i_xxx, i_csrrci, // E7
     i_xxx, i_xxx, i_xxx, i_xxx, i_xxx, i_xxx, i_xxx, i_xxx, // EF
     i_xxx, i_xxx, i_xxx, i_xxx, i_xxx, i_xxx, i_xxx, i_xxx, // F7
     i_xxx, i_xxx, i_xxx, i_xxx, i_xxx, i_xxx, i_xxx, i_xxx, // FF
@@ -705,6 +765,14 @@ fn c_addi(m: &mut Machine, op: u16) {
     m.cpu.xset(r, v.wrapping_add(imm));
 }
 
+fn c_andi(m: &mut Machine, op: u16) {
+    let r = c_frd(op);
+    let v = m.cpu.xget(r);
+    let imm = c_li_imm(op);
+
+    m.cpu.xset(r, v & imm);
+}
+
 fn c_li(m: &mut Machine, op: u16) {
     let r = c_frd(op);
 
@@ -723,7 +791,8 @@ fn c_lui(m: &mut Machine, op: u16) {
 
         m.cpu.xset(r, v.wrapping_add(imm));
     } else {
-        panic!("LUI {:?}", m.cpu);
+        let imm = c_li_imm(op) << 12;
+        m.cpu.xset(r, imm)
     }
 }
 
@@ -740,6 +809,15 @@ fn c_srli(m: &mut Machine, op: u16) {
 
     let v = m.cpu.xget(rd);
     m.cpu.xset(rd, v.checked_shr(s).unwrap_or(0));
+}
+
+fn c_sub(m: &mut Machine, op: u16) {
+    let rd = c_rs1(op);
+    let rs2 = c_rs2(op);
+    let a = m.cpu.xget(rd);
+    let b = m.cpu.xget(rs2);
+
+    m.cpu.xset(rd, a.wrapping_sub(b))
 }
 
 fn c_slli(m: &mut Machine, op: u16) {
@@ -833,7 +911,7 @@ static INSTRUCTIONS_16: [fn(&mut Machine, op: u16); 256] = [
     c_xxx, c_xxx, c_xxx, c_xxx, c_xxx, c_xxx, c_xxx, c_xxx, // 4F
     c_li, c_li, c_li, c_li, c_li, c_li, c_li, c_li, // 57
     c_lui, c_lui, c_lui, c_lui, c_lui, c_lui, c_lui, c_lui, // 5F
-    c_srli, c_xxx, c_xxx, c_xxx, c_srli, c_xxx, c_xxx, c_xxx, // 67
+    c_srli, c_xxx, c_andi, c_sub, c_srli, c_xxx, c_andi, c_xxx, // 67
     c_j, c_j, c_j, c_j, c_j, c_j, c_j, c_j, // 6F
     c_beqz, c_beqz, c_beqz, c_beqz, c_beqz, c_beqz, c_beqz, c_beqz, // 77
     c_bnez, c_bnez, c_bnez, c_bnez, c_bnez, c_bnez, c_bnez, c_bnez, // 7F
@@ -855,6 +933,7 @@ static INSTRUCTIONS_16: [fn(&mut Machine, op: u16); 256] = [
     c_xxx, c_xxx, c_xxx, c_xxx, c_xxx, c_xxx, c_xxx, c_xxx, // FF
 ];
 
+const CSR_MSTATUS: u32 = 0x300;
 const CSR_MIE: u32 = 0x304;
 const CSR_MTVEC: u32 = 0x305;
 const CSR_MIP: u32 = 0x344;
@@ -1059,6 +1138,8 @@ fn test_c_li_imm() {
     assert_eq!(c_li_imm(0x5081) as i32, -0x20);
     // li x1, 0x15
     assert_eq!(c_li_imm(0x40d5), 0x15);
+    // c.andi x13, -4
+    assert_eq!(c_li_imm(0x9af1) as i32, -4);
 }
 
 #[test]
