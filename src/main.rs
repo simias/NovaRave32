@@ -92,6 +92,24 @@ impl Machine {
         panic!("Can't sw at {:x} {:?}", addr, self.cpu);
     }
 
+    /// Store halfword `v` at `addr`.
+    fn store_halfword(&mut self, addr: u32, v: u16) {
+        debug_assert!(addr & 1 == 0);
+
+        if let Some(off) = RAM.contains(addr) {
+            let wo = (off >> 2) as usize;
+            let bitpos = (off & 3) << 3;
+
+            let mut word = self.ram[wo];
+            word &= !(0xffff << bitpos);
+            word |= u32::from(v) << bitpos;
+            self.ram[wo] = word;
+            return;
+        }
+
+        panic!("Can't sb at {:x} {:?}", addr, self.cpu);
+    }
+
     /// Store byte `v` at `addr`.
     fn store_byte(&mut self, addr: u32, v: u8) {
         if let Some(off) = RAM.contains(addr) {

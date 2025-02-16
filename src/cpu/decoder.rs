@@ -241,7 +241,10 @@ fn decode_page(m: &mut Machine, lut_idx: usize) -> usize {
                     let off = store_off(op);
 
                     match funct3 {
+                        // SB
                         0b000 => Instruction::Sb { rs1, rs2, off },
+                        // SH
+                        0b001 => Instruction::Sh { rs1, rs2, off },
                         // SW
                         0b010 => Instruction::Sw { rs1, rs2, off },
                         _ => unkn,
@@ -330,8 +333,18 @@ fn decode_page(m: &mut Machine, lut_idx: usize) -> usize {
                     let imm = ((op >> 15) & 0x1f) as i8;
 
                     match funct3 {
+                        0b000 => {
+                            if op == 0x30200073 {
+                                // MRET
+                                Instruction::MRet
+                            } else {
+                                unkn
+                            }
+                        }
                         // CSRRW
                         0b001 => Instruction::CsrSet { rd, csr, rs1 },
+                        // CSRRC
+                        0b011 => Instruction::CsrClearBits { rd, csr, rs1 },
                         // CSRRWI
                         0b101 => Instruction::CsrManipImm {
                             rd,
@@ -667,6 +680,11 @@ pub enum Instruction {
         rs2: Reg,
         off: i16,
     },
+    Sh {
+        rs1: Reg,
+        rs2: Reg,
+        off: i16,
+    },
     Sw {
         rs1: Reg,
         rs2: Reg,
@@ -678,8 +696,13 @@ pub enum Instruction {
         rs2: Reg,
     },
 
-    // CSR stuff
+    // CSR/system stuff
     CsrSet {
+        rd: Reg,
+        csr: u16,
+        rs1: Reg,
+    },
+    CsrClearBits {
         rd: Reg,
         csr: u16,
         rs1: Reg,
@@ -690,6 +713,7 @@ pub enum Instruction {
         and_mask: i8,
         or_mask: i8,
     },
+    MRet,
 }
 
 impl Instruction {

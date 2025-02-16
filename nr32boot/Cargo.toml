@@ -1,0 +1,29 @@
+[package]
+name = "nr32boot-boot"
+version = "0.1.0"
+edition = "2021"
+
+[profile.dev]
+panic = "abort"
+# opt-level = 3
+incremental = true
+overflow-checks = true
+lto = true
+
+[profile.release]
+panic = "abort"
+lto = true
+codegen-units = 1
+overflow-checks = false
+
+[dependencies]
+log = "0.4"
+embedded-alloc = "0.6"
+
+[dependencies.riscv]
+version = "0.12"
+features = [ "critical-section-single-hart" ]
+
+[dependencies.riscv-rt]
+version = "0.13"
+features = [ "single-hart" ]

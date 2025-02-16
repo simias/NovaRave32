@@ -22,6 +22,8 @@ pub struct Cpu {
     mip: u32,
     /// Machine Trap Vector base address
     mtvec: u32,
+    /// Machine Exception Program Counter
+    mepc: u32,
     /// Contains the address of the last "Load-Reserved" instruction as long as it remains valid
     reservation: Option<u32>,
 }
@@ -36,6 +38,7 @@ impl Cpu {
             mie: 0,
             mip: 0,
             mtvec: ROM.base,
+            mepc: 0,
             reservation: None,
         }
     }
@@ -57,7 +60,7 @@ impl Cpu {
         // TODO Check CSR privileges and raise illegal-instruction if there's a violation
         // See "2.1. CSR Address Mapping Conventions" in the privileged architecture manual.
 
-        info!("CSR SET *{:x} & {:x} | {:x}", csr, and_mask, or_mask);
+        debug!("CSR SET *{:x} & {:x} | {:x}", csr, and_mask, or_mask);
 
         let update_csr = |reg: &mut u32| -> u32 {
             let prev = *reg;
@@ -82,6 +85,7 @@ impl Cpu {
                 }
                 update_csr(&mut self.mie)
             }
+            CSR_MEPC => update_csr(&mut self.mepc),
             CSR_MIP => update_csr(&mut self.mip),
             CSR_MTVEC => update_csr(&mut self.mtvec),
             _ => panic!("Unhandled CSR {:x} {:?}", csr, self),
@@ -155,7 +159,7 @@ pub fn step(m: &mut Machine) {
     let (inst, npc) = decoder::fetch_instruction(m, pc);
     m.cpu.pc = npc;
 
-    info!("{:x} {:x?}", pc, inst);
+    // info!("{:x} {:x?}", pc, inst);
 
     match inst {
         Instruction::InvalidAddress(add) => panic!("Can't fetch instruction at {:x}", add),
@@ -293,6 +297,18 @@ pub fn step(m: &mut Machine) {
 
             m.store_byte(addr, v as u8);
         }
+        Instruction::Sh { rs1, rs2, off } => {
+            let base = m.cpu.xget(rs1);
+            let v = m.cpu.xget(rs2);
+
+            let addr = base.wrapping_add(off.extend());
+
+            if addr & 1 == 0 {
+                m.store_halfword(addr, v as u16);
+            } else {
+                panic!("Misaligned SH {:x} {:?}", addr, m.cpu);
+            }
+        }
         Instruction::Sw { rs1, rs2, off } => {
             let base = m.cpu.xget(rs1);
             let v = m.cpu.xget(rs2);
@@ -302,7 +318,7 @@ pub fn step(m: &mut Machine) {
             if addr & 3 == 0 {
                 m.store_word(addr, v);
             } else {
-                panic!("Misaligned store {:x} {:?}", addr, m.cpu);
+                panic!("Misaligned SW {:x} {:?}", addr, m.cpu);
             }
         }
         Instruction::Lrw { rd, rs1 } => {
@@ -355,6 +371,13 @@ pub fn step(m: &mut Machine) {
 
             m.cpu.xset(rd, prev);
         }
+        Instruction::CsrClearBits { rd, csr, rs1 } => {
+            let v = m.cpu.xget(rs1);
+
+            let prev = m.cpu.csr_and_or(csr, !v, 0);
+
+            m.cpu.xset(rd, prev);
+        }
         Instruction::CsrManipImm {
             rd,
             csr,
@@ -364,6 +387,10 @@ pub fn step(m: &mut Machine) {
             let prev = m.cpu.csr_and_or(csr, and_mask.extend(), or_mask.extend());
 
             m.cpu.xset(rd, prev);
+        }
+        Instruction::MRet => {
+            // XXX handle mode stuff
+            m.cpu.pc = m.cpu.mepc;
         }
         Instruction::Unknown32(op) => {
             panic!("Encountered unknown instruction {:x} {:?}", op, m.cpu)
@@ -378,6 +405,7 @@ pub fn step(m: &mut Machine) {
 const CSR_MSTATUS: u16 = 0x300;
 const CSR_MIE: u16 = 0x304;
 const CSR_MTVEC: u16 = 0x305;
+const CSR_MEPC: u16 = 0x341;
 const CSR_MIP: u16 = 0x344;
 
 /// Trait used to sign-extend various types to 32bits
