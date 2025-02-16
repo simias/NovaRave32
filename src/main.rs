@@ -1,7 +1,12 @@
+#[macro_use]
+extern crate static_assertions;
+
+#[macro_use]
+extern crate log;
+
 mod cpu;
 
 use env_logger::Env;
-use log::{info, warn};
 use std::env;
 use std::fs;
 use std::process;
@@ -38,6 +43,7 @@ fn main() {
         rom: Box::new([0; (ROM.len >> 2) as usize]),
         ram: Box::new([0; (RAM.len >> 2) as usize]),
         dbg_out: Vec::new(),
+        run: true,
     };
 
     // Copy ROM
@@ -48,7 +54,7 @@ fn main() {
         machine.rom[rpos] |= u32::from(b) << (roff * 8);
     }
 
-    loop {
+    while machine.run {
         cpu::step(&mut machine);
     }
 }
@@ -59,40 +65,27 @@ struct Machine {
     ram: Box<[u32; (RAM.len >> 2) as _]>,
     /// Buffer containing messages written to the debug console before they're flushed to stdout
     dbg_out: Vec<u8>,
+    run: bool,
 }
 
 impl Machine {
-    /// Fetches a 32bit instruction at `pc`. Assumes `pc` is 16-bit aligned.
-    fn fetch_instruction(&self, pc: u32) -> u32 {
-        if pc & 3 == 0 {
-            // 32bit-aligned
-            if let Some(off) = ROM.contains(pc) {
-                return self.rom[(off >> 2) as usize];
-            }
-        } else {
-            assert!(pc & 1 == 0);
-            let aligned_pc = pc & !3;
-
-            let ilo = self.fetch_instruction(aligned_pc) >> 16;
-
-            if ilo & 3 != 3 {
-                // This is not a 32bit instruction, we don't care about the high bits
-                return ilo;
-            } else {
-                let ihi = self.fetch_instruction(aligned_pc.wrapping_add(4)) << 16;
-                return ihi | ilo;
-            }
-        }
-
-        panic!("Can't fetch instruction! {:?}", self.cpu);
-    }
-
     /// Store word `v` at `addr`. `addr` is assumed to be correctly aligned
     fn store_word(&mut self, addr: u32, v: u32) {
         debug_assert!(addr & 3 == 0);
 
         if let Some(off) = RAM.contains(addr) {
             self.ram[(off >> 2) as usize] = v;
+            return;
+        }
+
+        if let Some(off) = DEBUG.contains(addr) {
+            if off == 0x20 {
+                // Shutdown
+                if v >> 16 == 0xd1e {
+                    info!("Shutdown requested with code {}", v & 0xffff);
+                    self.run = false;
+                }
+            }
             return;
         }
 
