@@ -2,7 +2,7 @@
 
 mod decoder;
 
-use crate::{NoRa32, RAM, ROM};
+use crate::{CycleCounter, NoRa32, RAM, ROM};
 use decoder::{Decoder, Instruction};
 use std::fmt;
 
@@ -154,6 +154,8 @@ static REGNAMES: [&str; 33] = [
 ];
 
 pub fn step(m: &mut NoRa32) {
+    m.tick(1);
+
     let pc = m.cpu.pc;
 
     let (inst, npc) = decoder::fetch_instruction(m, pc);
@@ -230,6 +232,7 @@ pub fn step(m: &mut NoRa32) {
         Instruction::Jal { rd, tpc } => {
             m.cpu.xset(rd, m.cpu.pc);
             m.cpu.pc = tpc;
+            m.tick(1);
         }
         Instruction::Jalr { rd, rs1, off } => {
             let base = m.cpu.xget(rs1);
@@ -238,13 +241,14 @@ pub fn step(m: &mut NoRa32) {
 
             m.cpu.xset(rd, m.cpu.pc);
             m.cpu.pc = target;
+            m.tick(1);
         }
         Instruction::Beq { rs1, rs2, tpc } => {
             let a = m.cpu.xget(rs1);
             let b = m.cpu.xget(rs2);
 
             if a == b {
-                m.cpu.pc = tpc;
+                branch(m, tpc)
             }
         }
         Instruction::Bne { rs1, rs2, tpc } => {
@@ -252,7 +256,7 @@ pub fn step(m: &mut NoRa32) {
             let b = m.cpu.xget(rs2);
 
             if a != b {
-                m.cpu.pc = tpc;
+                branch(m, tpc)
             }
         }
         Instruction::Bltu { rs1, rs2, tpc } => {
@@ -260,7 +264,7 @@ pub fn step(m: &mut NoRa32) {
             let b = m.cpu.xget(rs2);
 
             if a < b {
-                m.cpu.pc = tpc;
+                branch(m, tpc)
             }
         }
         Instruction::Bgeu { rs1, rs2, tpc } => {
@@ -268,7 +272,7 @@ pub fn step(m: &mut NoRa32) {
             let b = m.cpu.xget(rs2);
 
             if a >= b {
-                m.cpu.pc = tpc;
+                branch(m, tpc)
             }
         }
         Instruction::Lbu { rd, rs1, off } => {
@@ -410,6 +414,17 @@ pub fn step(m: &mut NoRa32) {
             panic!("Encountered invalid instruction {:x} {:?}", op, m.cpu)
         }
     }
+}
+
+fn branch(m: &mut NoRa32, target_pc: u32) {
+    let dist = target_pc.abs_diff(m.cpu.pc);
+
+    // To make emulation simpler, we don't have any cache. However to make the emulation profile a
+    // bit more "realistic" and penalize excessive branching, we add a penalty for far branches
+    let cost = 20.min(dist >> 7);
+
+    m.tick(cost as CycleCounter);
+    m.cpu.pc = target_pc;
 }
 
 const CSR_MSTATUS: u16 = 0x300;

@@ -24,6 +24,8 @@ pub struct NoRa32 {
     /// Buffer containing messages written to the debug console before they're flushed to stdout
     dbg_out: Vec<u8>,
     run: bool,
+    /// Incremented by the CPU as it runs
+    cycle_counter: CycleCounter,
 }
 
 #[wasm_bindgen]
@@ -36,6 +38,7 @@ impl NoRa32 {
             ram: Box::new([0; (RAM.len >> 2) as usize]),
             dbg_out: Vec::new(),
             run: true,
+            cycle_counter: 0,
         }
     }
 
@@ -62,9 +65,19 @@ impl NoRa32 {
 
     #[wasm_bindgen]
     pub fn run_frame(&mut self) {
-        while self.run {
+        let frame_budget = CPU_FREQ / 60;
+
+        while self.run && self.cycle_counter < frame_budget {
             cpu::step(self);
         }
+
+        if self.cycle_counter >= frame_budget {
+            self.cycle_counter -= frame_budget;
+        }
+    }
+
+    fn tick(&mut self, cycles: CycleCounter) {
+        self.cycle_counter += cycles;
     }
 
     /// Store word `v` at `addr`. `addr` is assumed to be correctly aligned
@@ -144,6 +157,8 @@ impl NoRa32 {
     fn load_word(&mut self, addr: u32) -> u32 {
         debug_assert!(addr & 3 == 0);
 
+        self.tick(1);
+
         if let Some(off) = RAM.contains(addr) {
             return self.ram[(off >> 2) as usize];
         }
@@ -157,6 +172,8 @@ impl NoRa32 {
 
     /// Load bite from `addr`. `addr` is assumed to be correctly aligned.
     fn load_byte(&mut self, addr: u32) -> u8 {
+        self.tick(1);
+
         if let Some(off) = RAM.contains(addr) {
             let word = self.ram[(off >> 2) as usize];
             return (word >> ((off & 3) << 3)) as u8;
@@ -229,3 +246,10 @@ const DEBUG: Range = Range {
     base: 0x1000_0000,
     len: 1024,
 };
+
+type CycleCounter = i32;
+
+/// The CPU runs at precisely 24.576MHz.
+///
+/// The frequency is chosen to be a multiple of the audio frequency (48kHz).
+const CPU_FREQ: CycleCounter = 48_000 * 512;
