@@ -3,10 +3,18 @@ html {
     color: white;
 }
 
-#console {
+#nora32-console {
     max-height: 1000px;
     overflow-y: auto;
     background: #112222;
     padding: 10px;
     border: 1px solid grey;
+}
+
+#nora32-screen {
+    border: 1px solid grey;
+    border-radius: 5px;
+    background: black;
+    image-rendering: pixelated;
+    image-rendering: crisp-edges;
 }

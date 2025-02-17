@@ -17,6 +17,12 @@ fn main() {
 }
 
 #[wasm_bindgen]
+extern "C" {
+    /// Function used to draw 3D primitives
+    fn drawTriangles3D(ptr: *const f32, count: usize);
+}
+
+#[wasm_bindgen]
 pub struct NoRa32 {
     cpu: cpu::Cpu,
     rom: Box<[u32; (ROM.len >> 2) as _]>,
@@ -74,6 +80,14 @@ impl NoRa32 {
         if self.cycle_counter >= frame_budget {
             self.cycle_counter -= frame_budget;
         }
+
+        let vertices = [
+            0.0, 0.8, 0.0, 1.0, 0.0, 0.0, 1.0, -0.8, -0.8, 0.0, 0.0, 1.0, 0.0, 1.0, 0.8, -0.8, 0.0,
+            0.0, 0.0, 1.0, 1.0, 0.4, 0.7, 0.3, 1.0, 1.0, 0.0, 0., -0.8, 0., 0.0, 1.0, 1.0, 0.0,
+            0.5, 0.3, -0.3, 0.9, 0.0, 1.0, 1.0, 1.0,
+        ];
+
+        drawTriangles3D(vertices.as_ptr(), vertices.len());
     }
 
     fn tick(&mut self, cycles: CycleCounter) {
