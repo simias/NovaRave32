@@ -1,7 +1,7 @@
 //! RISC-V instruc//tion decoding and caching
 
 use super::{Extendable, Reg};
-use crate::{Machine, RAM, ROM};
+use crate::{NoRa32, RAM, ROM};
 
 /// Number of bytes per instruction page as a power of two
 const PAGE_LEN_SHIFT: usize = 10;
@@ -75,7 +75,7 @@ fn lut_idx_to_base(lidx: usize) -> u32 {
     base
 }
 
-pub fn fetch_instruction(m: &mut Machine, pc: u32) -> (Instruction, u32) {
+pub fn fetch_instruction(m: &mut NoRa32, pc: u32) -> (Instruction, u32) {
     if pc & 1 != 0 {
         return (Instruction::InvalidAddress(pc), pc);
     }
@@ -115,7 +115,7 @@ pub fn fetch_instruction(m: &mut Machine, pc: u32) -> (Instruction, u32) {
 }
 
 // Decode page at `lut_idx`, store it in the cache and returns its page_idx
-fn decode_page(m: &mut Machine, lut_idx: usize) -> usize {
+fn decode_page(m: &mut NoRa32, lut_idx: usize) -> usize {
     let base = lut_idx_to_base(lut_idx);
 
     info!("PAGE DECODE 0x{:x}", base);
@@ -343,6 +343,8 @@ fn decode_page(m: &mut Machine, lut_idx: usize) -> usize {
                         }
                         // CSRRW
                         0b001 => Instruction::CsrSet { rd, csr, rs1 },
+                        // CSRRS
+                        0b010 => Instruction::CsrSetBits { rd, csr, rs1 },
                         // CSRRC
                         0b011 => Instruction::CsrClearBits { rd, csr, rs1 },
                         // CSRRWI
@@ -375,11 +377,21 @@ fn decode_page(m: &mut Machine, lut_idx: usize) -> usize {
             *inst = match op & 3 {
                 0b00 => match op >> 13 {
                     // C.ADDI4SPN
-                    0b000 => Instruction::AddImm {
-                        rd: cr_2x(op),
-                        rs1: Reg::SP,
-                        imm: c_addi4spn_off(op),
-                    },
+                    0b000 => {
+                        let imm = c_addi4spn_off(op);
+
+                        if imm != 0 {
+                            Instruction::AddImm {
+                                rd: cr_2x(op),
+                                rs1: Reg::SP,
+                                imm,
+                            }
+                        } else {
+                            // This encoding is invalid. It's worth special-casing because this is
+                            // where we end up if we try to execute full-zero
+                            Instruction::Invalid16(op)
+                        }
+                    }
                     // C.LW
                     0b010 => Instruction::Lw {
                         rd: cr_2x(op).out(),
@@ -568,6 +580,7 @@ pub enum Instruction {
     InvalidAddress(u32),
     Unknown32(u32),
     Unknown16(u16),
+    Invalid16(u16),
 
     // ALU/register manipulation
     Li {
@@ -698,6 +711,11 @@ pub enum Instruction {
 
     // CSR/system stuff
     CsrSet {
+        rd: Reg,
+        csr: u16,
+        rs1: Reg,
+    },
+    CsrSetBits {
         rd: Reg,
         csr: u16,
         rs1: Reg,

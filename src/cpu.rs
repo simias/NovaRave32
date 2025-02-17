@@ -2,7 +2,7 @@
 
 mod decoder;
 
-use crate::{Machine, RAM, ROM};
+use crate::{NoRa32, RAM, ROM};
 use decoder::{Decoder, Instruction};
 use std::fmt;
 
@@ -74,7 +74,7 @@ impl Cpu {
         match csr {
             CSR_MSTATUS => {
                 if or_mask != 0 {
-                    panic!("MSTATUS set {:x}", or_mask)
+                    warn!("MSTATUS set {:x}", or_mask);
                 }
 
                 update_csr(&mut self.mstatus)
@@ -153,7 +153,7 @@ static REGNAMES: [&str; 33] = [
     "t6", "r_",
 ];
 
-pub fn step(m: &mut Machine) {
+pub fn step(m: &mut NoRa32) {
     let pc = m.cpu.pc;
 
     let (inst, npc) = decoder::fetch_instruction(m, pc);
@@ -378,6 +378,13 @@ pub fn step(m: &mut Machine) {
 
             m.cpu.xset(rd, prev);
         }
+        Instruction::CsrSetBits { rd, csr, rs1 } => {
+            let v = m.cpu.xget(rs1);
+
+            let prev = m.cpu.csr_and_or(csr, !0, v);
+
+            m.cpu.xset(rd, prev);
+        }
         Instruction::CsrManipImm {
             rd,
             csr,
@@ -399,6 +406,9 @@ pub fn step(m: &mut Machine) {
             "Encountered unknown compressed instruction {:x} {:?}",
             op, m.cpu
         ),
+        Instruction::Invalid16(op) => {
+            panic!("Encountered invalid instruction {:x} {:?}", op, m.cpu)
+        }
     }
 }
 

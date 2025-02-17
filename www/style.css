@@ -1,0 +1,12 @@
+html {
+    background: #1f2f2f;
+    color: white;
+}
+
+#console {
+    max-height: 1000px;
+    overflow-y: auto;
+    background: #112222;
+    padding: 10px;
+    border: 1px solid grey;
+}

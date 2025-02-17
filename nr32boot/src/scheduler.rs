@@ -8,7 +8,7 @@ pub fn start(main_task: fn(u32) -> !) {
     let ra = main_task as *const u8 as u32;
 
     info!("Jumping to {:x}", ra);
-    unsafe { asm::return_to_user_task(ra, sp, 42) }
+    unsafe { asm::start_user_task(ra, sp, 42) }
 }
 
 /// Allocate a `stack_size`-byte long, 0-initialized stack and return a 16-byte aligned pointer to
@@ -29,12 +29,11 @@ fn stack_alloc(stack_size: usize) -> u32 {
 mod asm {
     use core::arch::global_asm;
 
-    // Jump to task whose address is in a0, and stack in s0, restoring callee-preserved registers only
-    // (so only suitable for syscall-style returns, not thread preemption).
+    // Jump to task whose address is in a0, and stack in s0 and passing `ret` as 1st argument
     //
-    // The task will be run in U-mode
+    // The task will be run in U-mode with interrupts enabled.
     extern "C" {
-        pub fn return_to_user_task(ra: u32, sp: u32, ret: u32) -> !;
+        pub fn start_user_task(ra: u32, sp: u32, ret: u32) -> !;
     }
 
     global_asm!(
@@ -42,13 +41,16 @@ mod asm {
     .option push
     .option rvc
     .section .text
-    .global return_to_user_task
-return_to_user_task:
+    .global start_user_task
+start_user_task:
     .cfi_startproc
 
-    /* Clear MPP to return to user mode */
+    /* Clear MPP to switch to user mode when mret is called */
     li t0, 3 << 11
     csrc mstatus, t0
+    /* Set MPIE to enable interrupts upon mret */
+    li t0, 1 << 7
+    csrs mstatus, t0
 
     /* Put task return address in mepc */
     csrw mepc, a0
@@ -56,24 +58,8 @@ return_to_user_task:
     /* Restore SP from a1 */
     mv sp, a1
 
-    /* Set return value from a2 */
+    /* Set parameter from a2 */
     mv a0, a2
-
-    /* Unbank registers */
-    lw s0, 44(sp)
-    lw s1, 40(sp)
-    lw s2, 36(sp)
-    lw s3, 32(sp)
-    lw s4, 28(sp)
-    lw s5, 24(sp)
-    lw s6, 20(sp)
-    lw s7, 16(sp)
-    lw s8, 12(sp)
-    lw s9, 8(sp)
-    lw s10, 4(sp)
-    lw s11, 0(sp)
-
-    addi sp, sp, 48
 
     mret
 
