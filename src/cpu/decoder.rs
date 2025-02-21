@@ -172,7 +172,9 @@ fn decode_page(m: &mut NoRa32, lut_idx: usize) -> usize {
                     let off = imm_20_se(op);
 
                     match funct3 {
+                        // LW
                         0b010 => Instruction::Lw { rd, rs1, off },
+                        // LBU
                         0b100 => Instruction::Lbu { rd, rs1, off },
                         _ => unkn,
                     }
@@ -411,6 +413,7 @@ fn decode_page(m: &mut NoRa32, lut_idx: usize) -> usize {
                     _ => unkn,
                 },
                 0b01 => match op >> 13 {
+                    // C.ADDI
                     0b000 => Instruction::AddImm {
                         rd: cr_7(op).out(),
                         rs1: cr_7(op),
@@ -686,6 +689,7 @@ pub enum Instruction {
         rs2: Reg,
         tpc: u32,
     },
+    MRet,
 
     // Memory access
     Lbu {
@@ -745,7 +749,6 @@ pub enum Instruction {
         and_mask: i8,
         or_mask: i8,
     },
-    MRet,
 }
 
 impl Instruction {

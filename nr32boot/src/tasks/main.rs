@@ -24,19 +24,42 @@ pub fn main() {
     // Start draw
     send_to_gpu(0x01 << 24);
 
-    // Flat-color triangle
-    send_to_gpu((0x40 << 24)
-        | 0x00ff00 // Color
-        );
-    // V1 Z = 0
+    // Flat triangle
+    send_to_gpu(
+        (0x40 << 24) | 0x2f4f4f, // Triangle color
+    );
+    // V1 Z
     send_coords(0, 0);
     // V1 Y | X
+    send_coords(600, 900);
+    // V2 Z
+    send_coords(0, 0);
+    // V2 Y | X
+    send_coords(-300, -200);
+    // V3 Z
+    send_coords(0, 0);
+    // V3 Y | X
+    send_coords(800, -1000);
+
+    // Gouraud triangle
+    send_to_gpu(
+        (0x40 << 24)
+        | (1 << 25) // Gouraud
+        | 0x00ff00, // V1 color
+    );
+    // V1 Z
+    send_coords(1000, 0);
+    // V1 Y | X
     send_coords(0, 500);
-    // V2 Z = 0
+    // V2 color
+    send_to_gpu(0xff0000);
+    // V2 Z
     send_coords(0, 0);
     // V2 Y | X
     send_coords(-500, -500);
-    // V3 Z = 0
+    // V3 color
+    send_to_gpu(0x0000ff);
+    // V3 Z
     send_coords(0, 0);
     // V3 Y | X
     send_coords(500, -500);

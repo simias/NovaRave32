@@ -126,14 +126,26 @@ fn draw_flat_triangle(m: &mut NoRa32) {
 fn handle_command(m: &mut NoRa32, cmd: u32) {
     m.gpu.command_state = match m.gpu.command_state {
         CommandState::Idle => handle_new_command(m, cmd),
-        CommandState::FlatTriangleZ { vindex } => {
+        CommandState::TriangleRgb { vindex, gouraud } => {
+            let r = (cmd >> 16) as u8;
+            let g = (cmd >> 8) as u8;
+            let b = cmd as u8;
+
+            m.gpu.vertices[usize::from(vindex)].color = [r, g, b];
+
+            CommandState::TriangleZ {
+                vindex: vindex,
+                gouraud,
+            }
+        }
+        CommandState::TriangleZ { vindex, gouraud } => {
             let z = (cmd & 0xffff) as f32;
 
             m.gpu.vertices[usize::from(vindex)].coords[2] = z;
 
-            CommandState::FlatTriangleYX { vindex }
+            CommandState::TriangleYX { vindex, gouraud }
         }
-        CommandState::FlatTriangleYX { vindex } => {
+        CommandState::TriangleYX { vindex, gouraud } => {
             let x = (cmd & 0xffff) as i16 as f32;
             let y = (cmd >> 16) as i16 as f32;
 
@@ -149,8 +161,16 @@ fn handle_command(m: &mut NoRa32, cmd: u32) {
             if vindex == 2 {
                 draw_flat_triangle(m);
                 CommandState::Idle
+            } else if gouraud {
+                CommandState::TriangleRgb {
+                    vindex: vindex + 1,
+                    gouraud,
+                }
             } else {
-                CommandState::FlatTriangleZ { vindex: vindex + 1 }
+                CommandState::TriangleZ {
+                    vindex: vindex + 1,
+                    gouraud,
+                }
             }
         }
         CommandState::MatrixSetComponent { mindex, i, j } => {
@@ -217,6 +237,8 @@ fn handle_new_command(m: &mut NoRa32, cmd: u32) -> CommandState {
         }
         // Draw triangle
         0x40..=0x7f => {
+            let gouraud = (cmd & (1 << 25)) != 0;
+
             let r = (cmd >> 16) as u8;
             let g = (cmd >> 8) as u8;
             let b = cmd as u8;
@@ -225,7 +247,8 @@ fn handle_new_command(m: &mut NoRa32, cmd: u32) -> CommandState {
                 m.gpu.vertices[i].color = [r, g, b];
                 m.gpu.vertices[i].coords[3] = 1.;
             }
-            CommandState::FlatTriangleZ { vindex: 0 }
+
+            CommandState::TriangleZ { vindex: 0, gouraud }
         }
         _ => panic!("Unhandled GPU command {:x}", op),
     }
@@ -251,8 +274,9 @@ pub fn store_word(m: &mut NoRa32, addr: u32, v: u32) {
 enum CommandState {
     Idle,
     MatrixSetComponent { mindex: u8, i: u8, j: u8 },
-    FlatTriangleZ { vindex: u8 },
-    FlatTriangleYX { vindex: u8 },
+    TriangleZ { vindex: u8, gouraud: bool },
+    TriangleYX { vindex: u8, gouraud: bool },
+    TriangleRgb { vindex: u8, gouraud: bool },
 }
 
 #[derive(PartialEq, Eq, Copy, Clone)]
