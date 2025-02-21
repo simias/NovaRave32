@@ -5,6 +5,7 @@ extern crate console_error_panic_hook;
 extern crate log;
 
 mod cpu;
+mod gpu;
 
 use cfg_if::cfg_if;
 use std::panic;
@@ -19,7 +20,7 @@ fn main() {
 #[wasm_bindgen]
 extern "C" {
     /// Function used to draw 3D primitives
-    fn drawTriangles3D(ptr: *const f32, count: usize);
+    fn drawTriangles3D(f32_ptr: *const f32, u8_ptr: *const u8, count: usize);
 }
 
 #[wasm_bindgen]
@@ -27,8 +28,10 @@ pub struct NoRa32 {
     cpu: cpu::Cpu,
     rom: Box<[u32; (ROM.len >> 2) as _]>,
     ram: Box<[u32; (RAM.len >> 2) as _]>,
+    gpu: gpu::Gpu,
     /// Buffer containing messages written to the debug console before they're flushed to stdout
     dbg_out: Vec<u8>,
+    /// Sets to false if the emulator should shutdown
     run: bool,
     /// Incremented by the CPU as it runs
     cycle_counter: CycleCounter,
@@ -42,6 +45,7 @@ impl NoRa32 {
             cpu: cpu::Cpu::new(),
             rom: Box::new([0; (ROM.len >> 2) as usize]),
             ram: Box::new([0; (RAM.len >> 2) as usize]),
+            gpu: gpu::Gpu::new(),
             dbg_out: Vec::new(),
             run: true,
             cycle_counter: 0,
@@ -80,14 +84,6 @@ impl NoRa32 {
         if self.cycle_counter >= frame_budget {
             self.cycle_counter -= frame_budget;
         }
-
-        let vertices = [
-            0.0, 0.8, 0.0, 1.0, 0.0, 0.0, 1.0, -0.8, -0.8, 0.0, 0.0, 1.0, 0.0, 1.0, 0.8, -0.8, 0.0,
-            0.0, 0.0, 1.0, 1.0, 0.4, 0.7, 0.3, 1.0, 1.0, 1.0, 1.0, -0.8, 0., 0.0, 1.0, 1.0, 1.0,
-            0.7, 0.3, -0.3, 0.9, 0.8, 0.8, 0.8, 1.0,
-        ];
-
-        drawTriangles3D(vertices.as_ptr(), vertices.len());
     }
 
     fn tick(&mut self, cycles: CycleCounter) {
@@ -100,6 +96,11 @@ impl NoRa32 {
 
         if let Some(off) = RAM.contains(addr) {
             self.ram[(off >> 2) as usize] = v;
+            return;
+        }
+
+        if let Some(off) = GPU.contains(addr) {
+            gpu::store_word(self, off, v);
             return;
         }
 
@@ -181,6 +182,10 @@ impl NoRa32 {
             return self.rom[(off >> 2) as usize];
         }
 
+        if let Some(off) = GPU.contains(addr) {
+            return gpu::load_word(self, off);
+        }
+
         panic!("Can't load from {:x} {:?}", addr, self.cpu);
     }
 
@@ -258,6 +263,11 @@ const RAM: Range = Range {
 
 const DEBUG: Range = Range {
     base: 0x1000_0000,
+    len: 1024,
+};
+
+const GPU: Range = Range {
+    base: 0x1001_0000,
     len: 1024,
 };
 

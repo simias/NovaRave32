@@ -176,6 +176,12 @@ pub fn step(m: &mut NoRa32) {
 
             m.cpu.xset(rd, a.wrapping_add(b));
         }
+        Instruction::Or { rd, rs1, rs2 } => {
+            let a = m.cpu.xget(rs1);
+            let b = m.cpu.xget(rs2);
+
+            m.cpu.xset(rd, a | b);
+        }
         Instruction::Sub { rd, rs1, rs2 } => {
             let a = m.cpu.xget(rs1);
             let b = m.cpu.xget(rs2);
@@ -186,6 +192,9 @@ pub fn step(m: &mut NoRa32) {
             let a = m.cpu.xget(rs1);
             let b = m.cpu.xget(rs2);
 
+            // Add a slight penalty for multiplications
+            m.tick(1);
+
             m.cpu.xset(rd, a.wrapping_mul(b));
         }
         Instruction::Mulhu { rd, rs1, rs2 } => {
@@ -193,6 +202,9 @@ pub fn step(m: &mut NoRa32) {
             let b = m.cpu.xget(rs2);
 
             let p = u64::from(a) * u64::from(b);
+
+            // Add a slight penalty for multiplications
+            m.tick(1);
 
             m.cpu.xset(rd, (p >> 32) as u32);
         }
@@ -202,12 +214,29 @@ pub fn step(m: &mut NoRa32) {
 
             let d = if b == 0 { !0 } else { a / b };
 
+            // Having divisions take one cycle feels wrong to me, so I'm using a weird heuristic to
+            // penalize them here.
+            //
+            // I tried looking for a more realistic model online but it seems difficult to find any
+            // sound default, especially since we don't implement any pipelining or out-of-order
+            // execution in this CPU model. For instance the PlayStation CPU's division takes
+            // dozens of cycles but it can execute in parallel with other instructions as long as
+            // there's no register dependency.
+            let hamming_res = d.min(b).count_ones();
+
+            m.tick(hamming_res as CycleCounter);
+
             m.cpu.xset(rd, d);
         }
         Instruction::AddImm { rd, rs1, imm } => {
             let v = m.cpu.xget(rs1);
 
             m.cpu.xset(rd, v.wrapping_add(imm.extend()));
+        }
+        Instruction::XorImm { rd, rs1, imm } => {
+            let v = m.cpu.xget(rs1);
+
+            m.cpu.xset(rd, v ^ imm.extend());
         }
         Instruction::OrImm { rd, rs1, imm } => {
             let v = m.cpu.xget(rs1);

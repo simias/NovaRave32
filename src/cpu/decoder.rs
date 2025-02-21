@@ -35,8 +35,8 @@ impl Decoder {
             PAGE_CACHE_MAX,
             (PAGE_CACHE_MAX * PAGE_LEN_BYTES) / 1024
         );
-        info!("SYSTEM_PAGES:     {}p", PAGE_TOTAL);
-        info!("Instruction size: {}B", std::mem::size_of::<Instruction>());
+        info!("SYSTEM_PAGES:   {}p", PAGE_TOTAL);
+        info!("INST_SIZE:      {}B", std::mem::size_of::<Instruction>());
 
         Decoder {
             pages: Vec::new(),
@@ -214,6 +214,8 @@ fn decode_page(m: &mut NoRa32, lut_idx: usize) -> usize {
                             },
                             _ => unkn,
                         },
+                        // XORI
+                        0b100 => Instruction::XorImm { rd, rs1, imm },
                         0b101 => match funct7 {
                             // SRLI
                             0b0000000 => Instruction::SrlImm {
@@ -270,6 +272,8 @@ fn decode_page(m: &mut NoRa32, lut_idx: usize) -> usize {
                         0b000_0000 => match funct3 {
                             // ADD
                             0b000 => Instruction::Add { rd, rs1, rs2 },
+                            // OR
+                            0b110 => Instruction::Or { rd, rs1, rs2 },
                             _ => unkn,
                         },
                         0b000_0001 => match funct3 {
@@ -596,6 +600,11 @@ pub enum Instruction {
         rs1: Reg,
         rs2: Reg,
     },
+    Or {
+        rd: Reg,
+        rs1: Reg,
+        rs2: Reg,
+    },
     Sub {
         rd: Reg,
         rs1: Reg,
@@ -617,6 +626,11 @@ pub enum Instruction {
         rs2: Reg,
     },
     AddImm {
+        rd: Reg,
+        rs1: Reg,
+        imm: i16,
+    },
+    XorImm {
         rd: Reg,
         rs1: Reg,
         imm: i16,

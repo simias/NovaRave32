@@ -6,6 +6,8 @@ const wasm = await init();
 
 const canvas = document.getElementById('nora32-screen');
 const gl = canvas.getContext('webgl2', { antialias: false });
+const f32_buffer = gl.createBuffer();
+const u8_buffer = gl.createBuffer();
 
 async function start() {
 
@@ -22,8 +24,6 @@ async function start() {
     }
     gl.useProgram(program);
 
-    const buffer = gl.createBuffer();
-    gl.bindBuffer(gl.ARRAY_BUFFER, buffer);
 
     const positionLocation = gl.getAttribLocation(program, "a_position");
     const colorLocation = gl.getAttribLocation(program, "a_color");
@@ -31,9 +31,12 @@ async function start() {
     gl.enableVertexAttribArray(positionLocation);
     gl.enableVertexAttribArray(colorLocation);
 
-    const stride = Float32Array.BYTES_PER_ELEMENT * (3 + 4);
-    gl.vertexAttribPointer(positionLocation, 3, gl.FLOAT, false, stride, 0);
-    gl.vertexAttribPointer(colorLocation, 4, gl.FLOAT, false, stride, 3 * Float32Array.BYTES_PER_ELEMENT);
+    gl.bindBuffer(gl.ARRAY_BUFFER, f32_buffer);
+    const stride = Float32Array.BYTES_PER_ELEMENT * 4;
+    gl.vertexAttribPointer(positionLocation, 4, gl.FLOAT, false, stride, 0);
+
+    gl.bindBuffer(gl.ARRAY_BUFFER, u8_buffer);
+    gl.vertexAttribIPointer(colorLocation, 4, gl.UNSIGNED_BYTE, 4, 0);
 
     gl.enable(gl.BLEND);
     gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
@@ -49,15 +52,20 @@ async function start() {
     nora32.run_frame();
 }
 
-window.drawTriangles3D = function (ptr, count) {
+window.drawTriangles3D = function (f32_ptr, u8_ptr, count) {
     console.log(`DRAW TRIANGLES called with ${count} vertices`);
 
-    let data = new Float32Array(wasm.memory.buffer, ptr, count);
+    let f32data = new Float32Array(wasm.memory.buffer, f32_ptr, count * 4);
+    let u8data = new Uint8Array(wasm.memory.buffer, u8_ptr, count * 4);
 
-    gl.bufferData(gl.ARRAY_BUFFER, data, gl.DYNAMIC_DRAW);
+    gl.bindBuffer(gl.ARRAY_BUFFER, f32_buffer);
+    gl.bufferData(gl.ARRAY_BUFFER, f32data, gl.DYNAMIC_DRAW);
+
+    gl.bindBuffer(gl.ARRAY_BUFFER, u8_buffer);
+    gl.bufferData(gl.ARRAY_BUFFER, u8data, gl.DYNAMIC_DRAW);
 
     gl.clear(gl.COLOR_BUFFER_BIT);
-    gl.drawArrays(gl.TRIANGLES, 0, count / 7);
+    gl.drawArrays(gl.TRIANGLES, 0, count);
 }
 
 async function fetchROM(url) {
@@ -80,7 +88,7 @@ function redirectConsole(elem_id) {
         elem.textContent += `[${type}] ${msg}\n`;
     }
 
-    ['log', 'info', 'warn', 'error'].forEach(m => {
+    ['log', 'info', 'warn', 'error', 'debug'].forEach(m => {
         const oldMethod = console[m];
 
         const label = m.toUpperCase();
@@ -107,14 +115,14 @@ function compileShader(gl, type, source) {
 }
 
 const noRaVertexShader = `#version 300 es
-    in vec3 a_position;
-    in vec4 a_color;
+    in vec4 a_position;
+    in uvec4 a_color;
 
     out vec4 v_color;
 
     void main() {
-        gl_Position = vec4(a_position, 1.0);
-        v_color = a_color;
+        gl_Position = a_position;
+        v_color = vec4(a_color) / 255.;
     }
 `;
 

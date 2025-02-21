@@ -21,7 +21,7 @@ pub fn log_heap_stats() {
     let tot = used + free;
 
     info!(
-        "{}KiB used {}KiB free ({}%)",
+        "{}KiB used {}KiB free ({}% used)",
         used / 1024,
         free / 1024,
         (used * 100 + tot / 2) / tot,
