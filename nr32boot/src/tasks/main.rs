@@ -48,7 +48,7 @@ pub fn main() {
         | 0x00ff00, // V1 color
     );
     // V1 Z
-    send_coords(1000, 0);
+    send_coords(0, 0);
     // V1 Y | X
     send_coords(0, 500);
     // V2 color

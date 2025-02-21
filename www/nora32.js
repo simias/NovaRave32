@@ -5,6 +5,7 @@ redirectConsole("nora32-console");
 const wasm = await init();
 
 const canvas = document.getElementById('nora32-screen');
+canvas.style['image-rendering'] = 'pixelated';
 const gl = canvas.getContext('webgl2', { antialias: false });
 const f32_buffer = gl.createBuffer();
 const u8_buffer = gl.createBuffer();
