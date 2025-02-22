@@ -5,7 +5,6 @@ pub fn main() {
 
     // Matrix 0 reset to identity
     let op = (0x10 << 24) // Matrix command
-        | (0 << 16) // M0
         | (0b11 << 14); // Clear
 
     send_to_gpu(op);
@@ -13,8 +12,6 @@ pub fn main() {
     for i in 0..3 {
         // Set matrix scale to 1/1024 on all axes
         let op = (0x10 << 24) // Matrix command
-            | (0 << 16) // M0
-            | (0b00 << 14) // Set one component
             | (i << 4) | i; // set [i][i]
 
         send_to_gpu(op);

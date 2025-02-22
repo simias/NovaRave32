@@ -9,25 +9,34 @@ extern crate log;
 
 mod console;
 mod scheduler;
+mod start;
 mod tasks;
 mod utils;
 
 use embedded_alloc::LlffHeap as Heap;
-use riscv_rt::entry;
 
 // Linker symbols
 extern "C" {
-    static _sheap: u8;
-    static _hart_stack_size: u8;
-    static _stack_start: u8;
+    static __sstack: u8;
+    static __estack: u8;
+    static __sheap: u8;
+    static __eheap: u8;
 }
 
-#[entry]
-fn main() -> ! {
-    let stack_start = unsafe { &_stack_start as *const u8 as usize };
-    let stack_size = unsafe { &_hart_stack_size as *const u8 as usize };
-    let heap_start = unsafe { &_sheap as *const u8 as usize };
-    let heap_size = stack_start - heap_start;
+#[export_name = "_system_entry"]
+pub fn rust_start() -> ! {
+    system_init();
+
+    scheduler::start(tasks::run_main_task)
+}
+
+fn system_init() {
+    let stack_start = unsafe { &__sstack as *const u8 as usize };
+    let stack_end = unsafe { &__estack as *const u8 as usize };
+    let stack_size = stack_end - stack_start;
+    let heap_start = unsafe { &__sheap as *const u8 as usize };
+    let heap_end = unsafe { &__eheap as *const u8 as usize };
+    let heap_size = heap_end - heap_start;
 
     log::set_logger(&console::LOGGER)
         .map(|()| log::set_max_level(log::LevelFilter::Trace))
@@ -36,14 +45,14 @@ fn main() -> ! {
     info!("BOOTING v{}", env!("CARGO_PKG_VERSION"));
     info!(
         "System stack: 0x{:x?} - 0x{:x?} [{:x}KiB]",
-        stack_start - stack_size,
         stack_start,
+        stack_end,
         stack_size / 1024
     );
     info!(
         "Heap:         0x{:x?} - 0x{:x?} [{}KiB]",
         heap_start,
-        heap_start + heap_size,
+        heap_end,
         heap_size / 1024
     );
 
@@ -51,10 +60,6 @@ fn main() -> ! {
     unsafe { HEAP.init(heap_start, heap_size) };
 
     utils::log_heap_stats();
-
-    scheduler::start(tasks::run_main_task);
-
-    utils::shutdown(0)
 }
 
 #[global_allocator]

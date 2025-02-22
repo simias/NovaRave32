@@ -1,6 +1,6 @@
 use alloc::vec;
 
-pub fn start(main_task: fn(u32) -> !) {
+pub fn start(main_task: fn(u32) -> !) -> ! {
     let stack = stack_alloc(2048);
 
     // return_to_user_stack will pop registers, we need to allocate enough room for them

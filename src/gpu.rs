@@ -133,10 +133,7 @@ fn handle_command(m: &mut NoRa32, cmd: u32) {
 
             m.gpu.vertices[usize::from(vindex)].color = [r, g, b];
 
-            CommandState::TriangleZ {
-                vindex: vindex,
-                gouraud,
-            }
+            CommandState::TriangleZ { vindex, gouraud }
         }
         CommandState::TriangleZ { vindex, gouraud } => {
             let z = (cmd & 0xffff) as f32;
