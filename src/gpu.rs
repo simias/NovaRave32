@@ -9,7 +9,7 @@ pub struct Gpu {
     /// State of the rasterizer
     raster_state: RasterState,
     /// Perspective matrices
-    mat: [Mat4; 3],
+    mat: [Mat4; 4],
     /// Currently buffered vertices for triangle draw commands
     vertices: [Vertex; 3],
     /// Float vertex attributes for OpenGL:
@@ -33,7 +33,7 @@ impl Gpu {
         Gpu {
             command_state: CommandState::Idle,
             raster_state: RasterState::Idle,
-            mat: [Mat4::IDENTITY; 3],
+            mat: [Mat4::IDENTITY; 4],
             vertices: [Vertex::new(); 3],
             attribs_f32: Vec::new(),
             attribs_u8: Vec::new(),
@@ -101,7 +101,7 @@ fn draw_flat_triangle(m: &mut NoRa32) {
     // coordinates go from -1 to +1 in either direction, so a quad covering the entire screen would
     // have an area of 4. Since we want pixels, we have to ajust.
     let area = (640. * 480. * 0.25 * 0.5)
-        * ((x0 * y1 + x1 * y2 + x2 * y0) - (y0 * x1 + y1 * x2 + y2 * x0));
+        * ((x0 * y1 + x1 * y2 + x2 * y0) - (x0 * y2 + x1 * y0 + x2 * y1));
 
     if area <= 0. {
         // Clockwise triangle -> cull
@@ -237,7 +237,9 @@ fn handle_new_command(m: &mut NoRa32, cmd: u32) -> CommandState {
         }
         // Draw triangle
         0x40..=0x7f => {
-            let gouraud = (cmd & (1 << 25)) != 0;
+            let blend_mode = (op >> 1) & 7;
+
+            let gouraud = blend_mode == 2;
 
             let r = (cmd >> 16) as u8;
             let g = (cmd >> 8) as u8;

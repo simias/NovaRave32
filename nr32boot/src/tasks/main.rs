@@ -44,7 +44,7 @@ pub fn main() {
     // Gouraud triangle
     send_to_gpu(
         (0x40 << 24)
-        | (1 << 25) // Gouraud
+        | (2 << 25) // Gouraud
         | 0x00ff00, // V1 color
     );
     // V1 Z
