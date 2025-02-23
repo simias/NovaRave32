@@ -4,8 +4,9 @@ MEMORY
     ROM (xrw) : ORIGIN = 0x20000000, LENGTH = 2M
 }
 
-PROVIDE(__sstack= ORIGIN(RAM) + LENGTH(RAM));
+PROVIDE(__estack = ORIGIN(RAM) + LENGTH(RAM));
 PROVIDE(__stack_len = 2K);
+PROVIDE(__sstack = __estack - __stack_len);
 
 SECTIONS {
     .text :
@@ -57,10 +58,8 @@ SECTIONS {
     /* Reserve space for the stack */
     .stack (NOLOAD) :
     {
-    PROVIDE(__estack = .);
     . = ABSOLUTE(__sstack);
     PROVIDE(__eheap = .);
-    __estack = .;
     } > RAM
 }
 
