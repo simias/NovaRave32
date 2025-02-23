@@ -7,9 +7,9 @@ extern crate alloc;
 #[macro_use]
 extern crate log;
 
+mod asm;
 mod console;
 mod scheduler;
-mod start;
 mod tasks;
 mod utils;
 
@@ -23,11 +23,28 @@ extern "C" {
     static __eheap: u8;
 }
 
+/// This task much schedule the first task (by setting mepc, mscratch etc...) and return
 #[export_name = "_system_entry"]
-pub fn rust_start() -> ! {
+pub fn rust_start() {
     system_init();
 
-    scheduler::start(tasks::run_main_task)
+    let mut sched = scheduler::get();
+    sched.start(tasks::idle_task, tasks::main_task);
+}
+
+/// Called for trap handling
+#[export_name = "_system_trap"]
+pub fn rust_trap() {
+    let cause = riscv::register::mcause::read();
+
+    match (cause.is_interrupt(), cause.code()) {
+        // MTIME interrupt
+        (true, 7) => {
+            let mut sched = scheduler::get();
+            sched.preempt_current_task();
+        }
+        _ => panic!("Unhandled trap {:x?}", cause),
+    }
 }
 
 fn system_init() {
@@ -77,3 +94,9 @@ mod panic_handler {
         shutdown(!0)
     }
 }
+
+/// Frequency of the MTIME timer tick
+const MTIME_HZ: u32 = 48_000 * 16;
+
+/// Length of one millisecond in number of MTIME ticks
+const MTIME_1MS: u32 = (MTIME_HZ + 500) / 1000;

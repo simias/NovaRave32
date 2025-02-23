@@ -1,6 +1,6 @@
 //! Main task
 
-pub fn main() {
+pub fn main() -> ! {
     info!("Task is running!");
 
     // Matrix 0 reset to identity
@@ -63,6 +63,8 @@ pub fn main() {
 
     // End draw
     send_to_gpu(0x02 << 24);
+
+    panic!()
 }
 
 fn send_coords(a: i16, b: i16) {

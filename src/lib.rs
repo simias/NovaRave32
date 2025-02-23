@@ -6,6 +6,8 @@ extern crate log;
 
 mod cpu;
 mod gpu;
+mod sync;
+mod systimer;
 
 use cfg_if::cfg_if;
 use std::panic;
@@ -26,9 +28,11 @@ extern "C" {
 #[wasm_bindgen]
 pub struct NoRa32 {
     cpu: cpu::Cpu,
+    sync: sync::Synchronizer,
     rom: Box<[u32; (ROM.len >> 2) as _]>,
     ram: Box<[u32; (RAM.len >> 2) as _]>,
     gpu: gpu::Gpu,
+    systimer: systimer::Timer,
     /// Buffer containing messages written to the debug console before they're flushed to stdout
     dbg_out: Vec<u8>,
     /// Sets to false if the emulator should shutdown
@@ -43,9 +47,11 @@ impl NoRa32 {
     pub fn new() -> NoRa32 {
         NoRa32 {
             cpu: cpu::Cpu::new(),
+            sync: sync::Synchronizer::new(),
             rom: Box::new([0; (ROM.len >> 2) as usize]),
             ram: Box::new([0; (RAM.len >> 2) as usize]),
             gpu: gpu::Gpu::new(),
+            systimer: systimer::Timer::new(),
             dbg_out: Vec::new(),
             run: true,
             cycle_counter: 0,
@@ -75,15 +81,20 @@ impl NoRa32 {
 
     #[wasm_bindgen]
     pub fn run_frame(&mut self) {
-        let frame_budget = CPU_FREQ / 60;
+        let frame_budget = self.cycle_counter + (CPU_FREQ / 30);
 
         while self.run && self.cycle_counter < frame_budget {
-            cpu::step(self);
+            if self.cpu.wfi() {
+                sync::fast_forward_to_next_event(self);
+            } else {
+                while !sync::is_event_pending(self) {
+                    cpu::step(self);
+                }
+            }
+            sync::handle_events(self);
         }
 
-        if self.cycle_counter >= frame_budget {
-            self.cycle_counter -= frame_budget;
-        }
+        sync::rebase_counters(self);
     }
 
     fn tick(&mut self, cycles: CycleCounter) {
@@ -102,6 +113,10 @@ impl NoRa32 {
         if let Some(off) = GPU.contains(addr) {
             gpu::store_word(self, off, v);
             return;
+        }
+
+        if let Some(off) = SYS_TIMER.contains(addr) {
+            return systimer::store_word(self, off, v);
         }
 
         if let Some(off) = DEBUG.contains(addr) {
@@ -182,6 +197,10 @@ impl NoRa32 {
             return self.rom[(off >> 2) as usize];
         }
 
+        if let Some(off) = SYS_TIMER.contains(addr) {
+            return systimer::load_word(self, off);
+        }
+
         if let Some(off) = GPU.contains(addr) {
             return gpu::load_word(self, off);
         }
@@ -232,7 +251,7 @@ pub struct Range {
 impl Range {
     /// Return `Some(offset)` if addr is contained in `self`
     pub fn contains(self, addr: u32) -> Option<u32> {
-        if addr >= self.base && addr < self.base + self.len {
+        if addr >= self.base && addr <= self.base + (self.len - 1) {
             Some(addr - self.base)
         } else {
             None
@@ -251,6 +270,16 @@ cfg_if! {
     }
 }
 
+const DEBUG: Range = Range {
+    base: 0x1000_0000,
+    len: 1024,
+};
+
+const GPU: Range = Range {
+    base: 0x1001_0000,
+    len: 1024,
+};
+
 const ROM: Range = Range {
     base: 0x2000_0000,
     len: 2 * 1024 * 1024,
@@ -261,14 +290,9 @@ const RAM: Range = Range {
     len: 2 * 1024 * 1024,
 };
 
-const DEBUG: Range = Range {
-    base: 0x1000_0000,
-    len: 1024,
-};
-
-const GPU: Range = Range {
-    base: 0x1001_0000,
-    len: 1024,
+const SYS_TIMER: Range = Range {
+    base: 0xffff_fff0,
+    len: 16,
 };
 
 type CycleCounter = i32;

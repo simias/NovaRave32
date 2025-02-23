@@ -5,14 +5,14 @@ MEMORY
 }
 
 PROVIDE(__sstack= ORIGIN(RAM) + LENGTH(RAM));
-/* The system stack is only used at bootup and for the idle task, no point in
- * wasting too much RAM */
-PROVIDE(__stack_len = 1K);
+PROVIDE(__stack_len = 2K);
 
 SECTIONS {
     .text :
     {
         KEEP(*(.init));
+        . = ALIGN(4);
+        KEEP(*(.init.trap_handler));
         . = ALIGN(4);
         *(.text .text.*)
     } > ROM

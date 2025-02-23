@@ -216,6 +216,8 @@ fn decode_page(m: &mut NoRa32, lut_idx: usize) -> usize {
                             },
                             _ => unkn,
                         },
+                        // SLTIU
+                        0b011 => Instruction::Sltiu { rd, rs1, imm },
                         // XORI
                         0b100 => Instruction::XorImm { rd, rs1, imm },
                         0b101 => match funct7 {
@@ -262,6 +264,7 @@ fn decode_page(m: &mut NoRa32, lut_idx: usize) -> usize {
                     match (funct5, funct3, rs2) {
                         (0b00010, 0b010, Reg::ZERO) => Instruction::Lrw { rd, rs1 },
                         (0b00011, 0b010, _) => Instruction::Scw { rd, rs1, rs2 },
+                        (0b01000, 0b010, _) => Instruction::AmoorW { rd, rs1, rs2 },
                         _ => unkn,
                     }
                 }
@@ -274,6 +277,8 @@ fn decode_page(m: &mut NoRa32, lut_idx: usize) -> usize {
                         0b000_0000 => match funct3 {
                             // ADD
                             0b000 => Instruction::Add { rd, rs1, rs2 },
+                            // SLTU
+                            0b011 => Instruction::Sltu { rd, rs1, rs2 },
                             // OR
                             0b110 => Instruction::Or { rd, rs1, rs2 },
                             _ => unkn,
@@ -340,11 +345,12 @@ fn decode_page(m: &mut NoRa32, lut_idx: usize) -> usize {
 
                     match funct3 {
                         0b000 => {
-                            if op == 0x30200073 {
+                            match op {
+                                // WFI
+                                0x10500073 => Instruction::Wfi,
                                 // MRET
-                                Instruction::MRet
-                            } else {
-                                unkn
+                                0x30200073 => Instruction::MRet,
+                                _ => unkn,
                             }
                         }
                         // CSRRW
@@ -419,6 +425,11 @@ fn decode_page(m: &mut NoRa32, lut_idx: usize) -> usize {
                         rs1: cr_7(op),
                         imm: c_li_imm(op) as i16,
                     },
+                    // C.JAL
+                    0b001 => Instruction::Jal {
+                        rd: Reg::RA,
+                        tpc: pc.wrapping_add(c_joff(op).extend()),
+                    },
                     // C.LI
                     0b010 => Instruction::Li {
                         rd: cr_7(op).out(),
@@ -457,6 +468,18 @@ fn decode_page(m: &mut NoRa32, lut_idx: usize) -> usize {
                         },
                         // C.SUB
                         (0b10_0011, 0b00) => Instruction::Sub {
+                            rd: cr_7x(op).out(),
+                            rs1: cr_7x(op).out(),
+                            rs2: cr_2x(op).out(),
+                        },
+                        // C.OR
+                        (0b10_0011, 0b10) => Instruction::Or {
+                            rd: cr_7x(op).out(),
+                            rs1: cr_7x(op).out(),
+                            rs2: cr_2x(op).out(),
+                        },
+                        // C.AND
+                        (0b10_0011, 0b11) => Instruction::And {
                             rd: cr_7x(op).out(),
                             rs1: cr_7x(op).out(),
                             rs2: cr_2x(op).out(),
@@ -603,12 +626,22 @@ pub enum Instruction {
         rs1: Reg,
         rs2: Reg,
     },
+    Sltu {
+        rd: Reg,
+        rs1: Reg,
+        rs2: Reg,
+    },
     Or {
         rd: Reg,
         rs1: Reg,
         rs2: Reg,
     },
     Sub {
+        rd: Reg,
+        rs1: Reg,
+        rs2: Reg,
+    },
+    And {
         rd: Reg,
         rs1: Reg,
         rs2: Reg,
@@ -629,6 +662,11 @@ pub enum Instruction {
         rs2: Reg,
     },
     AddImm {
+        rd: Reg,
+        rs1: Reg,
+        imm: i16,
+    },
+    Sltiu {
         rd: Reg,
         rs1: Reg,
         imm: i16,
@@ -726,6 +764,11 @@ pub enum Instruction {
         rs1: Reg,
         rs2: Reg,
     },
+    AmoorW {
+        rd: Reg,
+        rs1: Reg,
+        rs2: Reg,
+    },
 
     // CSR/system stuff
     CsrSet {
@@ -749,6 +792,7 @@ pub enum Instruction {
         and_mask: i8,
         or_mask: i8,
     },
+    Wfi,
 }
 
 impl Instruction {
