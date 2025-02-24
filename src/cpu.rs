@@ -125,6 +125,17 @@ impl Cpu {
         self.mip |= u32::from(set) << 7;
     }
 
+    /// Get the value of Machine External Interrupt Pending in mip
+    fn mip_meip(&self) -> bool {
+        self.mip & (1 << 11) != 0
+    }
+
+    /// Set the value of Machine External Interrupt Pending in mip
+    fn mip_meip_set(&mut self, set: bool) {
+        self.mip &= !(1 << 11);
+        self.mip |= u32::from(set) << 11;
+    }
+
     /// Set a new value for the given Control and Status Register, returning the previous value
     #[cold]
     fn csr_and_or(&mut self, csr: u16, and_mask: u32, or_mask: u32) -> u32 {
@@ -289,6 +300,16 @@ pub fn set_mtip(m: &mut NoRa32, mtip: bool) {
     }
 
     m.cpu.mip_mtip_set(mtip);
+
+    check_for_irq(m);
+}
+
+pub fn set_meip(m: &mut NoRa32, meip: bool) {
+    if meip == m.cpu.mip_meip() {
+        return;
+    }
+
+    m.cpu.mip_meip_set(meip);
 
     check_for_irq(m);
 }
@@ -658,6 +679,8 @@ pub fn step(m: &mut NoRa32) {
                 Mode::User => cause::ECALL_FROM_U_MODE,
             };
 
+            // MEPC takes the current instruction address, not the next
+            m.cpu.pc = pc;
             trigger_trap(m, cause, 0);
         }
         Instruction::Unknown32(op) => {

@@ -1,4 +1,4 @@
-use crate::{MTIME_1MS, MTIME_HZ};
+use crate::{syscalls, MTIME_1MS, MTIME_HZ};
 use alloc::vec;
 use spin::{Mutex, MutexGuard};
 
@@ -60,7 +60,7 @@ impl Scheduler {
             t.sp = task_sp;
         }
 
-        self.refresh_task_state();
+        self.maybe_wake_up_tasks();
 
         // Find a runnable task, falling back on idle if nothing is found
         let mut next_task = 0;
@@ -96,16 +96,30 @@ impl Scheduler {
         }
     }
 
-    fn refresh_task_state(&mut self) {
+    fn maybe_wake_up_tasks(&mut self) {
         let now = mtime_get();
 
-        for t in &mut self.tasks.iter_mut() {
-            match t.state {
-                TaskState::Sleeping { until } if now >= until => {
+        for t in &mut self.tasks {
+            if let TaskState::Sleeping { until } = t.state {
+                if now >= until {
                     t.state = TaskState::Running;
                 }
-                _ => (),
             }
+        }
+    }
+
+    pub fn got_vsync(&mut self) {
+        let mut task_awoken = false;
+
+        for t in &mut self.tasks {
+            if let TaskState::WaitingForVSync = t.state {
+                task_awoken = true;
+                t.state = TaskState::Running;
+            }
+        }
+
+        if task_awoken {
+            self.preempt_current_task();
         }
     }
 
@@ -121,6 +135,22 @@ impl Scheduler {
         }
 
         self.preempt_current_task();
+    }
+
+    pub fn wait_event_current_task(&mut self, ev: usize) -> usize {
+        let t = &mut self.tasks[self.cur_task];
+
+        t.state = match ev {
+            syscalls::events::EV_VSYNC => TaskState::WaitingForVSync,
+            _ => {
+                error!("Can't waiting for unknown event {}", ev);
+                return !0;
+            }
+        };
+
+        self.preempt_current_task();
+
+        0
     }
 
     fn switch_to_task(&mut self, task_id: usize) {
@@ -179,6 +209,7 @@ enum TaskState {
         /// MTIME value
         until: u64,
     },
+    WaitingForVSync,
 }
 
 /// Use MTIMECMP to schedule an interrupt
@@ -229,13 +260,13 @@ fn stack_alloc(stack_size: usize) -> usize {
 const TASK_SLOT_MAX_TICKS: u32 = MTIME_HZ / 10;
 
 /// MTIME[31:0]
-const MTIME_L: *mut u32 = 0xffff_fff0 as *mut u32;
+const MTIME_L: *mut usize = 0xffff_fff0 as *mut usize;
 /// MTIME[63:32]
-const MTIME_H: *mut u32 = 0xffff_fff4 as *mut u32;
+const MTIME_H: *mut usize = 0xffff_fff4 as *mut usize;
 /// MTIMECMP[31:0]
-const MTIMECMP_L: *mut u32 = 0xffff_fff8 as *mut u32;
+const MTIMECMP_L: *mut usize = 0xffff_fff8 as *mut usize;
 /// MTIMECMP[63:32]
-const MTIMECMP_H: *mut u32 = 0xffff_fffc as *mut u32;
+const MTIMECMP_H: *mut usize = 0xffff_fffc as *mut usize;
 
 fn mtime_get() -> u64 {
     loop {
@@ -246,15 +277,15 @@ fn mtime_get() -> u64 {
 
             // Make sure that the counter didn't wrap as we were reading it
             if h == c {
-                return (u64::from(h) << 32) | u64::from(l);
+                return ((h as u64) << 32) | (l as u64);
             }
         }
     }
 }
 
 fn mtimecmp_set(cmp: u64) {
-    let l = cmp as u32;
-    let h = (cmp >> 32) as u32;
+    let l = cmp as usize;
+    let h = (cmp >> 32) as usize;
 
     unsafe {
         // Set full 1 to the low word so that we don't trigger an interrupt by mistake. Not that it

@@ -1,6 +1,6 @@
 //! Main task
 
-use crate::syscalls::msleep;
+use crate::syscalls::{msleep, wait_for_vsync};
 use core::time::Duration;
 
 pub fn main() -> ! {
@@ -67,9 +67,15 @@ pub fn main() -> ! {
     // End draw
     send_to_gpu(0x02 << 24);
 
+    info!("Sleeping 1s...");
+    msleep(Duration::from_secs(1));
+    info!("Done");
+
     loop {
-        info!("Sleeping...");
-        msleep(Duration::from_secs(1));
+        for _ in 0..30 {
+            wait_for_vsync();
+        }
+        info!("Got vsync 1s");
     }
 }
 

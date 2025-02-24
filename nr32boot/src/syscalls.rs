@@ -9,10 +9,14 @@ pub fn msleep(duration: Duration) {
 
     let ticks = (micros * f + 1_000_000 / 2) / 1_000_000;
 
-    syscall(SYS_SLEEP, ticks as u32, (ticks >> 32) as u32);
+    syscall(SYS_SLEEP, ticks as usize, (ticks >> 32) as usize);
 }
 
-fn syscall(code: u32, mut arg0: u32, arg1: u32) -> u32 {
+pub fn wait_for_vsync() {
+    syscall(SYS_WAIT_EVENT, events::EV_VSYNC, 0);
+}
+
+fn syscall(code: usize, mut arg0: usize, arg1: usize) -> usize {
     unsafe {
         asm!("ecall",
             in("a7") code,
@@ -24,4 +28,11 @@ fn syscall(code: u32, mut arg0: u32, arg1: u32) -> u32 {
     return arg0;
 }
 
-const SYS_SLEEP: u32 = 0x01;
+/// Suspend task for [a1:a0] MTIME ticks
+pub const SYS_SLEEP: usize = 0x01;
+/// Wait for the event described in a0
+pub const SYS_WAIT_EVENT: usize = 0x02;
+
+pub mod events {
+    pub const EV_VSYNC: usize = 1;
+}

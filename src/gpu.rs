@@ -1,4 +1,4 @@
-use crate::{drawTriangles3D, sync, CycleCounter, NoRa32, CPU_FREQ};
+use crate::{drawTriangles3D, irq, sync, CycleCounter, NoRa32, CPU_FREQ};
 use glam::{Mat4, Vec4};
 use std::fmt;
 
@@ -283,6 +283,7 @@ pub fn run(m: &mut NoRa32) {
     if m.gpu.frame_cycles <= 0 {
         m.frame_counter = m.frame_counter.wrapping_add(1);
         m.gpu.frame_cycles += FRAME_CYCLES_30FPS;
+        irq::trigger(m, irq::Interrupt::VSync);
     }
 
     sync::next_event(m, GPUSYNC, m.gpu.frame_cycles);

@@ -44,9 +44,26 @@ pub fn rust_trap() {
             let mut sched = scheduler::get();
             sched.preempt_current_task();
         }
+        // External interrupt
+        (true, 11) => handle_irqs(),
         // ECALL from user mode
         (false, 8) => handle_ecall(),
         _ => panic!("Unhandled trap {:x?}", cause),
+    }
+}
+
+fn handle_irqs() {
+    let pending = unsafe { IRQ_PENDING.read() };
+
+    // VSYNC
+    if pending & 1 != 0 {
+        let mut sched = scheduler::get();
+        sched.got_vsync();
+    }
+
+    // ACK everything
+    unsafe {
+        IRQ_PENDING.write(pending);
     }
 }
 
@@ -77,17 +94,27 @@ fn handle_ecall() {
     /* a1 */
     let arg1 = task_reg(11);
 
-    match code {
-        // SYS_SLEEP
-        //
+    let ret = match code {
         // Can also be used for yielding with `ticks` set to 0
-        0x01 => {
+        syscalls::SYS_SLEEP => {
             let ticks = (arg0 as u64) | ((arg1 as u64) << 32);
 
             let mut sched = scheduler::get();
             sched.sleep_current_task(ticks);
+            0
+        }
+        syscalls::SYS_WAIT_EVENT => {
+            let mut sched = scheduler::get();
+            sched.wait_event_current_task(arg0)
         }
         _ => panic!("Unknown syscall 0x{:02x}", code),
+    };
+
+    // Set return value in a0
+    unsafe {
+        let p = task_sp + (23 * 4);
+        let p = p as *mut usize;
+        p.write(ret);
     }
 }
 
@@ -121,6 +148,16 @@ fn system_init() {
     unsafe { HEAP.init(heap_start, heap_size) };
 
     utils::log_heap_stats();
+
+    // Activate VSYNC IRQ (for tasks that block on VSync, we could only enable it when needed but
+    // it's a minor load)
+    unsafe {
+        // ACK everything just in case
+        IRQ_PENDING.write(!0);
+        // Enable VSYNC IRQ
+        IRQ_ENABLED.write(1);
+        riscv::register::mie::set_mext();
+    }
 }
 
 #[global_allocator]
@@ -144,3 +181,8 @@ const MTIME_HZ: u32 = 48_000 * 16;
 
 /// Length of one millisecond in number of MTIME ticks
 const MTIME_1MS: u32 = (MTIME_HZ + 500) / 1000;
+
+/// External Interrupt Controller: IRQ pending register
+const IRQ_PENDING: *mut usize = 0xffff_ffe0 as *mut usize;
+/// External Interrupt Controller: IRQ enabled register
+const IRQ_ENABLED: *mut usize = 0xffff_ffe4 as *mut usize;

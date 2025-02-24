@@ -69,6 +69,14 @@ pub fn store_word(m: &mut NoRa32, off: u32, v: u32) {
     let t = &mut m.systimer;
 
     match off {
+        0x0 => {
+            t.mtime &= !0xffff_ffffu64;
+            t.mtime |= u64::from(v);
+        }
+        0x4 => {
+            t.mtime &= !(0xffff_ffffu64 << 32);
+            t.mtime |= u64::from(v) << 32;
+        }
         0x8 => {
             t.mtimecmp &= !0xffff_ffffu64;
             t.mtimecmp |= u64::from(v);

@@ -6,6 +6,7 @@ extern crate log;
 
 mod cpu;
 mod gpu;
+mod irq;
 mod sync;
 mod systimer;
 
@@ -33,6 +34,7 @@ pub struct NoRa32 {
     ram: Box<[u32; (RAM.len >> 2) as _]>,
     gpu: gpu::Gpu,
     systimer: systimer::Timer,
+    irq: irq::Controller,
     /// Buffer containing messages written to the debug console before they're flushed to stdout
     dbg_out: Vec<u8>,
     /// Sets to false if the emulator should shutdown
@@ -54,6 +56,7 @@ impl NoRa32 {
             ram: Box::new([0; (RAM.len >> 2) as usize]),
             gpu: gpu::Gpu::new(),
             systimer: systimer::Timer::new(),
+            irq: irq::Controller::new(),
             dbg_out: Vec::new(),
             run: true,
             cycle_counter: 0,
@@ -116,6 +119,10 @@ impl NoRa32 {
         if let Some(off) = GPU.contains(addr) {
             gpu::store_word(self, off, v);
             return;
+        }
+
+        if let Some(off) = IRQ_CONTROLLER.contains(addr) {
+            return irq::store_word(self, off, v);
         }
 
         if let Some(off) = SYS_TIMER.contains(addr) {
@@ -200,6 +207,10 @@ impl NoRa32 {
             return self.rom[(off >> 2) as usize];
         }
 
+        if let Some(off) = IRQ_CONTROLLER.contains(addr) {
+            return irq::load_word(self, off);
+        }
+
         if let Some(off) = SYS_TIMER.contains(addr) {
             return systimer::load_word(self, off);
         }
@@ -208,7 +219,7 @@ impl NoRa32 {
             return gpu::load_word(self, off);
         }
 
-        panic!("Can't load from {:x} {:?}", addr, self.cpu);
+        panic!("Can't load word from {:x} {:?}", addr, self.cpu);
     }
 
     /// Load bite from `addr`. `addr` is assumed to be correctly aligned.
@@ -225,7 +236,7 @@ impl NoRa32 {
             return (word >> ((off & 3) << 3)) as u8;
         }
 
-        panic!("Can't load from {:x} {:?}", addr, self.cpu);
+        panic!("Can't load byte from {:x} {:?}", addr, self.cpu);
     }
 
     // Print any message in the debug console to stdout and reset the buffer
@@ -291,6 +302,11 @@ const ROM: Range = Range {
 const RAM: Range = Range {
     base: 0x4000_0000,
     len: 2 * 1024 * 1024,
+};
+
+const IRQ_CONTROLLER: Range = Range {
+    base: 0xffff_ffe0,
+    len: 16,
 };
 
 const SYS_TIMER: Range = Range {
