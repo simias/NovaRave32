@@ -1,6 +1,6 @@
 //! Main task
 
-use crate::syscalls::{sched_yield, msleep, wait_for_vsync};
+use crate::syscalls::{msleep, sched_yield, spawn_task, wait_for_vsync};
 use core::time::Duration;
 
 pub fn main() -> ! {
@@ -71,6 +71,8 @@ pub fn main() -> ! {
     msleep(Duration::from_secs(1));
     info!("Done");
 
+    spawn_task(sub_task, -1);
+
     loop {
         for _ in 0..30 {
             wait_for_vsync();
@@ -103,3 +105,11 @@ fn gpu_status() -> u32 {
 }
 
 const GPU_CMD: *mut u32 = 0x1001_0000 as *mut u32;
+
+fn sub_task() -> ! {
+    loop {
+        info!("Sub-task sleeping");
+        msleep(Duration::from_millis(300));
+        info!("Sub-task done sleeping");
+    }
+}

@@ -94,18 +94,21 @@ fn handle_ecall() {
     /* a1 */
     let arg1 = task_reg(11);
 
+    let mut sched = scheduler::get();
     let ret = match code {
         // Can also be used for yielding with `ticks` set to 0
         syscalls::SYS_SLEEP => {
             let ticks = (arg0 as u64) | ((arg1 as u64) << 32);
 
-            let mut sched = scheduler::get();
             sched.sleep_current_task(ticks);
             0
         }
-        syscalls::SYS_WAIT_EVENT => {
-            let mut sched = scheduler::get();
-            sched.wait_event_current_task(arg0)
+        syscalls::SYS_WAIT_EVENT => sched.wait_event_current_task(arg0),
+        syscalls::SYS_SPAWN_TASK => {
+            let f = unsafe { core::mem::transmute(arg0) };
+            let prio = arg1 as i32;
+
+            sched.spawn_task(f, prio)
         }
         _ => panic!("Unknown syscall 0x{:02x}", code),
     };

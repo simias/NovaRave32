@@ -20,6 +20,10 @@ pub fn sched_yield() {
     syscall(SYS_SLEEP, 0, 0);
 }
 
+pub fn spawn_task(f: fn() -> !, prio: i32) {
+    syscall(SYS_SPAWN_TASK, f as usize, prio as usize);
+}
+
 fn syscall(code: usize, mut arg0: usize, arg1: usize) -> usize {
     unsafe {
         asm!("ecall",
@@ -36,6 +40,8 @@ fn syscall(code: usize, mut arg0: usize, arg1: usize) -> usize {
 pub const SYS_SLEEP: usize = 0x01;
 /// Wait for the event described in a0
 pub const SYS_WAIT_EVENT: usize = 0x02;
+/// Spawn a thread with entry function in a0 and prio in a'
+pub const SYS_SPAWN_TASK: usize = 0x03;
 
 pub mod events {
     pub const EV_VSYNC: usize = 1;

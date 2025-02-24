@@ -1,5 +1,5 @@
 use crate::{syscalls, MTIME_1MS, MTIME_HZ};
-use alloc::vec;
+use alloc::{boxed::Box, vec};
 use spin::{Mutex, MutexGuard};
 
 pub struct Scheduler {
@@ -8,12 +8,36 @@ pub struct Scheduler {
 }
 
 static SCHEDULER: Mutex<Scheduler> = Mutex::new(Scheduler {
-    tasks: [Task {
-        state: TaskState::Dead,
-        ra: 0,
-        sp: 0,
-        prio: -10,
-    }; MAX_TASKS],
+    tasks: [
+        Task {
+            state: TaskState::Dead,
+            ra: 0,
+            sp: 0,
+            prio: -10,
+            stack: None,
+        },
+        Task {
+            state: TaskState::Dead,
+            ra: 0,
+            sp: 0,
+            prio: -10,
+            stack: None,
+        },
+        Task {
+            state: TaskState::Dead,
+            ra: 0,
+            sp: 0,
+            prio: -10,
+            stack: None,
+        },
+        Task {
+            state: TaskState::Dead,
+            ra: 0,
+            sp: 0,
+            prio: -10,
+            stack: None,
+        },
+    ],
     cur_task: !0,
 });
 
@@ -29,23 +53,44 @@ pub fn get() -> MutexGuard<'static, Scheduler> {
 
 impl Scheduler {
     pub fn start(&mut self, idle_task: fn() -> !, main_task: fn() -> !) {
-        let idle_stack = stack_alloc(128);
-        let main_stack = stack_alloc(2048);
+        let (idle_stack, idle_sp) = stack_alloc(128);
+        let (main_stack, main_sp) = stack_alloc(2048);
 
-        self.tasks[0].sp = idle_stack - BANKED_REGISTER_LEN;
+        self.tasks[0].sp = idle_sp - BANKED_REGISTER_LEN;
         self.tasks[0].ra = idle_task as *const u8 as usize;
         self.tasks[0].state = TaskState::Running;
         self.tasks[0].prio = -1000;
+        self.tasks[0].stack = Some(idle_stack);
 
-        self.tasks[1].sp = main_stack - BANKED_REGISTER_LEN;
+        self.tasks[1].sp = main_sp - BANKED_REGISTER_LEN;
         self.tasks[1].ra = main_task as *const u8 as usize;
         self.tasks[1].state = TaskState::Running;
         self.tasks[1].prio = 0;
+        self.tasks[1].stack = Some(main_stack);
 
         // Spawn the idle task first to set it up properly and make sure our task switching code is
         // working correctly
         schedule_preempt(MTIME_1MS);
         self.switch_to_task(0);
+    }
+
+    pub fn spawn_task(&mut self, f: fn() -> !, prio: i32) -> usize {
+        for t in &mut self.tasks {
+            if !t.is_dead() {
+                continue;
+            }
+
+            let (stack, sp) = stack_alloc(2048);
+            t.sp = sp - BANKED_REGISTER_LEN;
+            t.ra = f as usize;
+            t.state = TaskState::Running;
+            t.prio = prio;
+            t.stack = Some(stack);
+            return 0;
+        }
+
+        // Can't spawn task
+        0
     }
 
     pub fn preempt_current_task(&mut self) {
@@ -76,7 +121,7 @@ impl Scheduler {
                 break;
             }
 
-            let t = self.tasks[task];
+            let t = &self.tasks[task];
 
             // Skip over task 0 which is always idle
             if task == 0 || !t.runnable() {
@@ -182,13 +227,14 @@ const MAX_TASKS: usize = 4;
 /// How much space is saved on the task stack when banking the registers
 const BANKED_REGISTER_LEN: usize = 32 * 4;
 
-#[derive(Copy, Clone)]
+#[derive(Clone)]
 struct Task {
     state: TaskState,
     ra: usize,
     sp: usize,
     /// Task priority (higher values means higher priority)
     prio: i32,
+    stack: Option<Box<[StackWord]>>,
 }
 
 impl Task {
@@ -225,16 +271,16 @@ fn schedule_preempt(delay_ticks: u32) {
     }
 }
 
+/// Type used to force the right alignment for the stack alloc
+#[repr(align(16))]
+#[derive(Copy, Clone)]
+#[allow(dead_code)]
+struct StackWord(u32);
+
 /// Allocate a `stack_size`-byte long, 0-initialized stack and return a 16-byte aligned pointer to
 /// the top
-fn stack_alloc(stack_size: usize) -> usize {
+fn stack_alloc(stack_size: usize) -> (Box<[StackWord]>, usize) {
     let stack_size = (stack_size + 0xf) & !0xf;
-
-    /// Type used to force the right alignment for the stack alloc
-    #[repr(align(16))]
-    #[derive(Copy, Clone)]
-    #[allow(dead_code)]
-    struct StackWord(u32);
 
     let sw_size = core::mem::size_of::<StackWord>();
 
@@ -252,7 +298,7 @@ fn stack_alloc(stack_size: usize) -> usize {
 
     assert!(top & 0xf == 0, "Allocated stack is not correctly aligned!");
 
-    top
+    (stack, top)
 }
 
 /// How long is a task allowed to hog the CPU if others are also runnable. Expressed in MTIME timer
