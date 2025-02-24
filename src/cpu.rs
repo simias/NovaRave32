@@ -343,6 +343,12 @@ pub fn step(m: &mut NoRa32) {
 
             m.cpu.xset(rd, if a < b { 1 } else { 0 });
         }
+        Instruction::Xor { rd, rs1, rs2 } => {
+            let a = m.cpu.xget(rs1);
+            let b = m.cpu.xget(rs2);
+
+            m.cpu.xset(rd, a ^ b);
+        }
         Instruction::Or { rd, rs1, rs2 } => {
             let a = m.cpu.xget(rs1);
             let b = m.cpu.xget(rs2);

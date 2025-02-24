@@ -167,3 +167,26 @@ __return_to_user:
     .cfi_endproc
     "
 );
+
+// Task running when there's nothing else to do.
+//
+// This task will not be given a proper stack, so it can't push or pop anything, or call anything
+// for that matter, hence the use of assembly to prevent bad surprises at lower optim levels.
+global_asm!(
+    ".section .text, \"ax\"
+    .global _idle_task
+_idle_task:
+    .cfi_startproc
+    .cfi_undefined ra
+
+1:
+    wfi
+    j       1b
+
+    .cfi_endproc
+    "
+);
+
+extern "C" {
+    pub fn _idle_task() -> !;
+}

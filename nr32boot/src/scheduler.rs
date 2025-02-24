@@ -1,44 +1,16 @@
-use crate::{syscalls, MTIME_1MS, MTIME_HZ};
-use alloc::{boxed::Box, vec};
+use crate::{asm::_idle_task, syscalls, MTIME_HZ};
+use alloc::{boxed::Box, vec, vec::Vec};
 use spin::{Mutex, MutexGuard};
 
 pub struct Scheduler {
-    tasks: [Task; MAX_TASKS],
+    tasks: Vec<Task>,
+    /// Which task of `tasks` is currently running
     cur_task: usize,
 }
 
 static SCHEDULER: Mutex<Scheduler> = Mutex::new(Scheduler {
-    tasks: [
-        Task {
-            state: TaskState::Dead,
-            ra: 0,
-            sp: 0,
-            prio: -10,
-            stack: None,
-        },
-        Task {
-            state: TaskState::Dead,
-            ra: 0,
-            sp: 0,
-            prio: -10,
-            stack: None,
-        },
-        Task {
-            state: TaskState::Dead,
-            ra: 0,
-            sp: 0,
-            prio: -10,
-            stack: None,
-        },
-        Task {
-            state: TaskState::Dead,
-            ra: 0,
-            sp: 0,
-            prio: -10,
-            stack: None,
-        },
-    ],
-    cur_task: !0,
+    tasks: Vec::new(),
+    cur_task: 0,
 });
 
 pub fn get() -> MutexGuard<'static, Scheduler> {
@@ -52,51 +24,33 @@ pub fn get() -> MutexGuard<'static, Scheduler> {
 }
 
 impl Scheduler {
-    pub fn start(&mut self, idle_task: fn() -> !, main_task: fn() -> !) {
-        let (idle_stack, idle_sp) = stack_alloc(128);
-        let (main_stack, main_sp) = stack_alloc(2048);
+    pub fn start(&mut self) {
+        self.tasks = Vec::with_capacity(4);
 
-        self.tasks[0].sp = idle_sp - BANKED_REGISTER_LEN;
-        self.tasks[0].ra = idle_task as *const u8 as usize;
-        self.tasks[0].state = TaskState::Running;
-        self.tasks[0].prio = -1000;
-        self.tasks[0].stack = Some(idle_stack);
-
-        self.tasks[1].sp = main_sp - BANKED_REGISTER_LEN;
-        self.tasks[1].ra = main_task as *const u8 as usize;
-        self.tasks[1].state = TaskState::Running;
-        self.tasks[1].prio = 0;
-        self.tasks[1].stack = Some(main_stack);
-
-        // Spawn the idle task first to set it up properly and make sure our task switching code is
-        // working correctly
-        schedule_preempt(MTIME_1MS);
+        // Create the idle task.
+        let idle_task = unsafe { core::mem::transmute(_idle_task as usize) };
+        self.spawn_task(idle_task, i32::MIN, BANKED_REGISTER_LEN);
         self.switch_to_task(0);
     }
 
-    pub fn spawn_task(&mut self, f: fn() -> !, prio: i32) -> usize {
-        for t in &mut self.tasks {
-            if !t.is_dead() {
-                continue;
-            }
+    pub fn spawn_task(&mut self, f: fn() -> !, prio: i32, stack_size: usize) {
+        let (stack, sp) = stack_alloc(stack_size);
 
-            let (stack, sp) = stack_alloc(2048);
-            t.sp = sp - BANKED_REGISTER_LEN;
-            t.ra = f as usize;
-            t.state = TaskState::Running;
-            t.prio = prio;
-            t.stack = Some(stack);
-            return 0;
-        }
+        let t = Task {
+            sp: sp - BANKED_REGISTER_LEN,
+            ra: f as usize,
+            state: TaskState::Running,
+            prio,
+            _stack: stack,
+        };
 
-        // Can't spawn task
-        0
+        self.tasks.push(t);
     }
 
     pub fn preempt_current_task(&mut self) {
-        // Start by saving the state of the current task
         {
-            let t = &mut self.tasks[usize::from(self.cur_task)];
+            // Start by saving the state of the current task
+            let t = &mut self.tasks[self.cur_task];
 
             let task_ra = riscv::register::mepc::read();
             let task_sp = riscv::register::mscratch::read();
@@ -113,8 +67,12 @@ impl Scheduler {
         // We loop starting from the current task so that we "round-robin" the threads with equal
         // priority.
         let mut task = self.cur_task;
+        let ntasks = self.tasks.len();
         loop {
-            task = task.wrapping_add(1) % MAX_TASKS;
+            task = task.wrapping_add(1);
+            if task >= ntasks {
+                task = 0;
+            }
 
             if task == self.cur_task {
                 // We wrapped around
@@ -123,8 +81,7 @@ impl Scheduler {
 
             let t = &self.tasks[task];
 
-            // Skip over task 0 which is always idle
-            if task == 0 || !t.runnable() {
+            if !t.runnable() {
                 continue;
             }
 
@@ -199,11 +156,7 @@ impl Scheduler {
     }
 
     fn switch_to_task(&mut self, task_id: usize) {
-        assert!(task_id < MAX_TASKS);
-
         let task = &self.tasks[task_id];
-
-        assert!(!task.is_dead());
 
         self.cur_task = task_id;
 
@@ -221,9 +174,6 @@ impl Scheduler {
     }
 }
 
-/// Needs at least 2 tasks: "idle" and "main"
-const MAX_TASKS: usize = 4;
-
 /// How much space is saved on the task stack when banking the registers
 const BANKED_REGISTER_LEN: usize = 32 * 4;
 
@@ -234,14 +184,10 @@ struct Task {
     sp: usize,
     /// Task priority (higher values means higher priority)
     prio: i32,
-    stack: Option<Box<[StackWord]>>,
+    _stack: Box<[StackWord]>,
 }
 
 impl Task {
-    fn is_dead(&self) -> bool {
-        matches!(self.state, TaskState::Dead)
-    }
-
     fn runnable(&self) -> bool {
         matches!(self.state, TaskState::Running)
     }
@@ -249,7 +195,6 @@ impl Task {
 
 #[derive(Copy, Clone)]
 enum TaskState {
-    Dead,
     Running,
     Sleeping {
         /// MTIME value

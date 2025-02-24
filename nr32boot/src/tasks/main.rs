@@ -109,7 +109,7 @@ const GPU_CMD: *mut u32 = 0x1001_0000 as *mut u32;
 fn sub_task() -> ! {
     loop {
         info!("Sub-task sleeping");
-        msleep(Duration::from_millis(300));
+        msleep(Duration::from_millis(2200));
         info!("Sub-task done sleeping");
     }
 }

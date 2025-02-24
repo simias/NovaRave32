@@ -30,7 +30,9 @@ pub fn rust_start() {
     system_init();
 
     let mut sched = scheduler::get();
-    sched.start(tasks::idle_task, tasks::main_task);
+    sched.start();
+    sched.spawn_task(tasks::main_task, 0, TASK_STACK_SIZE);
+    sched.preempt_current_task();
 }
 
 /// Called for trap handling
@@ -108,7 +110,8 @@ fn handle_ecall() {
             let f = unsafe { core::mem::transmute(arg0) };
             let prio = arg1 as i32;
 
-            sched.spawn_task(f, prio)
+            sched.spawn_task(f, prio, TASK_STACK_SIZE);
+            0
         }
         _ => panic!("Unknown syscall 0x{:02x}", code),
     };
@@ -182,10 +185,9 @@ mod panic_handler {
 /// Frequency of the MTIME timer tick
 const MTIME_HZ: u32 = 48_000 * 16;
 
-/// Length of one millisecond in number of MTIME ticks
-const MTIME_1MS: u32 = (MTIME_HZ + 500) / 1000;
-
 /// External Interrupt Controller: IRQ pending register
 const IRQ_PENDING: *mut usize = 0xffff_ffe0 as *mut usize;
 /// External Interrupt Controller: IRQ enabled register
 const IRQ_ENABLED: *mut usize = 0xffff_ffe4 as *mut usize;
+
+const TASK_STACK_SIZE: usize = 2048;

@@ -277,8 +277,12 @@ fn decode_page(m: &mut NoRa32, lut_idx: usize) -> usize {
                             0b000 => Instruction::Add { rd, rs1, rs2 },
                             // SLTU
                             0b011 => Instruction::Sltu { rd, rs1, rs2 },
+                            // XOR
+                            0b100 => Instruction::Xor { rd, rs1, rs2 },
                             // OR
                             0b110 => Instruction::Or { rd, rs1, rs2 },
+                            // AND
+                            0b111 => Instruction::And { rd, rs1, rs2 },
                             _ => unkn,
                         },
                         0b000_0001 => match funct3 {
@@ -631,6 +635,11 @@ pub enum Instruction {
         rs2: Reg,
     },
     Sltu {
+        rd: Reg,
+        rs1: Reg,
+        rs2: Reg,
+    },
+    Xor {
         rd: Reg,
         rs1: Reg,
         rs2: Reg,
