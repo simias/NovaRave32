@@ -39,6 +39,8 @@ pub struct NoRa32 {
     run: bool,
     /// Incremented by the CPU as it runs
     cycle_counter: CycleCounter,
+    /// Incremented by the GPU every time a new frame is generated
+    frame_counter: u32,
 }
 
 #[wasm_bindgen]
@@ -55,6 +57,7 @@ impl NoRa32 {
             dbg_out: Vec::new(),
             run: true,
             cycle_counter: 0,
+            frame_counter: 0,
         }
     }
 
@@ -81,9 +84,9 @@ impl NoRa32 {
 
     #[wasm_bindgen]
     pub fn run_frame(&mut self) {
-        let frame_budget = self.cycle_counter + (CPU_FREQ / 30);
+        let cur_frame = self.frame_counter;
 
-        while self.run && self.cycle_counter < frame_budget {
+        while self.run && self.frame_counter == cur_frame {
             if self.cpu.wfi() {
                 sync::fast_forward_to_next_event(self);
             } else {

@@ -50,9 +50,11 @@ async function start() {
 
     nora32.load_rom(rom);
 
-    nora32.run_frame();
+    setInterval(() => {
+        nora32.run_frame()
+        // console.log("run frame done");
+    }, 1000/30);
 
-    console.log("run frame done");
 }
 
 window.drawTriangles3D = function (f32_ptr, u8_ptr, count) {

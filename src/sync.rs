@@ -1,11 +1,12 @@
 //! Keep track of how many cycles have been run for every module
 
-use crate::{systimer, CycleCounter, NoRa32, CPU_FREQ};
+use crate::{gpu, systimer, CycleCounter, NoRa32, CPU_FREQ};
 
 /// Tokens used to keep track of the progress of each module individually
 #[derive(Copy, Clone, PartialEq, Eq, Debug)]
 pub enum SyncToken {
     SysTimer,
+    GpuTimer,
 
     NumTokens,
 }
@@ -59,7 +60,11 @@ pub fn resync(m: &mut NoRa32, who: SyncToken) -> CycleCounter {
 
 /// Fast forward the cycle counter to the time of the next scheduled event
 pub fn fast_forward_to_next_event(m: &mut NoRa32) {
-    m.cycle_counter = m.sync.first_event();
+    let fe = m.sync.first_event();
+
+    if fe > 0 {
+        m.cycle_counter = fe;
+    }
 }
 
 /// Reset the cycle_counter to 0 by rebasing all the event counters relative to it. This way we
@@ -102,6 +107,10 @@ pub fn handle_events(m: &mut NoRa32) {
 
         if m.sync.first_event >= m.sync.next_event[SyncToken::SysTimer as usize] {
             systimer::run(m);
+        }
+
+        if m.sync.first_event >= m.sync.next_event[SyncToken::GpuTimer as usize] {
+            gpu::run(m);
         }
 
         m.cycle_counter += event_delta;

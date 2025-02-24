@@ -12,7 +12,7 @@ pub struct Cpu {
     /// Program Counter
     pc: u32,
     /// 32 general purpose registers (x0 must always be 0). The additional register at the end is
-    /// used as a target for writes to R0
+    /// used as a target for writes to x0
     x: [u32; 33],
     /// Machine mode
     mode: Mode,
@@ -126,6 +126,7 @@ impl Cpu {
     }
 
     /// Set a new value for the given Control and Status Register, returning the previous value
+    #[cold]
     fn csr_and_or(&mut self, csr: u16, and_mask: u32, or_mask: u32) -> u32 {
         let mode_min = (csr >> 8) & 3;
         let read_only = ((csr >> 10) & 3) == 0b11;
@@ -248,6 +249,7 @@ fn check_for_irq(m: &mut NoRa32) {
     trigger_trap(m, cause, 0);
 }
 
+#[cold]
 fn trigger_trap(m: &mut NoRa32, cause: u32, _mtval: u32) {
     m.cpu.mcause = cause;
     m.cpu.mepc = m.cpu.pc;
@@ -270,13 +272,15 @@ fn trigger_trap(m: &mut NoRa32, cause: u32, _mtval: u32) {
         handler_base
     };
 
-    info!("TRAP {:x} AT {:x}", cause, m.cpu.mepc);
     m.cpu.pc = handler;
 }
 
 pub mod cause {
     pub const MACHINE_TIMER_IRQ: u32 = (1 << 31) | 7;
     pub const MACHINE_EXTERNAL_IRQ: u32 = (1 << 31) | 11;
+
+    pub const ECALL_FROM_M_MODE: u32 = 11;
+    pub const ECALL_FROM_U_MODE: u32 = 8;
 }
 
 pub fn set_mtip(m: &mut NoRa32, mtip: bool) {
@@ -439,6 +443,22 @@ pub fn step(m: &mut NoRa32) {
             let b = m.cpu.xget(rs2);
 
             if a != b {
+                branch(m, tpc)
+            }
+        }
+        Instruction::Blt { rs1, rs2, tpc } => {
+            let a = m.cpu.xget(rs1) as i32;
+            let b = m.cpu.xget(rs2) as i32;
+
+            if a < b {
+                branch(m, tpc)
+            }
+        }
+        Instruction::Bge { rs1, rs2, tpc } => {
+            let a = m.cpu.xget(rs1) as i32;
+            let b = m.cpu.xget(rs2) as i32;
+
+            if a >= b {
                 branch(m, tpc)
             }
         }
@@ -631,6 +651,14 @@ pub fn step(m: &mut NoRa32) {
                 m.cpu.wfi = true;
                 sync::fast_forward_to_next_event(m);
             }
+        }
+        Instruction::Ecall => {
+            let cause = match m.cpu.mode {
+                Mode::Machine => cause::ECALL_FROM_M_MODE,
+                Mode::User => cause::ECALL_FROM_U_MODE,
+            };
+
+            trigger_trap(m, cause, 0);
         }
         Instruction::Unknown32(op) => {
             panic!("Encountered unknown instruction {:x} {:?}", op, m.cpu)

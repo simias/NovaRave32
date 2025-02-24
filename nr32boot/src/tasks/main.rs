@@ -1,5 +1,8 @@
 //! Main task
 
+use crate::syscalls::msleep;
+use core::time::Duration;
+
 pub fn main() -> ! {
     info!("Task is running!");
 
@@ -64,7 +67,10 @@ pub fn main() -> ! {
     // End draw
     send_to_gpu(0x02 << 24);
 
-    panic!()
+    loop {
+        info!("Sleeping...");
+        msleep(Duration::from_secs(1));
+    }
 }
 
 fn send_coords(a: i16, b: i16) {

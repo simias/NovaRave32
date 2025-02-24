@@ -118,8 +118,6 @@ pub fn fetch_instruction(m: &mut NoRa32, pc: u32) -> (Instruction, u32) {
 fn decode_page(m: &mut NoRa32, lut_idx: usize) -> usize {
     let base = lut_idx_to_base(lut_idx);
 
-    info!("PAGE DECODE 0x{:x}", base);
-
     let (mem, mem_off) = {
         if let Some(off) = ROM.contains(base) {
             (&*m.rom as &[u32], off >> 2)
@@ -316,6 +314,10 @@ fn decode_page(m: &mut NoRa32, lut_idx: usize) -> usize {
                         0b000 => Instruction::Beq { rs1, rs2, tpc },
                         // BNE
                         0b001 => Instruction::Bne { rs1, rs2, tpc },
+                        // BLT
+                        0b100 => Instruction::Blt { rs1, rs2, tpc },
+                        // BGE
+                        0b101 => Instruction::Bge { rs1, rs2, tpc },
                         // BLTU
                         0b110 => Instruction::Bltu { rs1, rs2, tpc },
                         // BGEU
@@ -346,10 +348,12 @@ fn decode_page(m: &mut NoRa32, lut_idx: usize) -> usize {
                     match funct3 {
                         0b000 => {
                             match op {
+                                // ECALL
+                                0x0000_0073 => Instruction::Ecall,
                                 // WFI
-                                0x10500073 => Instruction::Wfi,
+                                0x1050_0073 => Instruction::Wfi,
                                 // MRET
-                                0x30200073 => Instruction::MRet,
+                                0x3020_0073 => Instruction::MRet,
                                 _ => unkn,
                             }
                         }
@@ -717,7 +721,17 @@ pub enum Instruction {
         rs2: Reg,
         tpc: u32,
     },
+    Blt {
+        rs1: Reg,
+        rs2: Reg,
+        tpc: u32,
+    },
     Bltu {
+        rs1: Reg,
+        rs2: Reg,
+        tpc: u32,
+    },
+    Bge {
         rs1: Reg,
         rs2: Reg,
         tpc: u32,
@@ -792,6 +806,7 @@ pub enum Instruction {
         and_mask: i8,
         or_mask: i8,
     },
+    Ecall,
     Wfi,
 }
 

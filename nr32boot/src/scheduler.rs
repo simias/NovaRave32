@@ -4,7 +4,7 @@ use spin::{Mutex, MutexGuard};
 
 pub struct Scheduler {
     tasks: [Task; MAX_TASKS],
-    cur_task: u8,
+    cur_task: usize,
 }
 
 static SCHEDULER: Mutex<Scheduler> = Mutex::new(Scheduler {
@@ -12,6 +12,7 @@ static SCHEDULER: Mutex<Scheduler> = Mutex::new(Scheduler {
         state: TaskState::Dead,
         ra: 0,
         sp: 0,
+        prio: -10,
     }; MAX_TASKS],
     cur_task: !0,
 });
@@ -34,10 +35,12 @@ impl Scheduler {
         self.tasks[0].sp = idle_stack - BANKED_REGISTER_LEN;
         self.tasks[0].ra = idle_task as *const u8 as usize;
         self.tasks[0].state = TaskState::Running;
+        self.tasks[0].prio = -1000;
 
         self.tasks[1].sp = main_stack - BANKED_REGISTER_LEN;
         self.tasks[1].ra = main_task as *const u8 as usize;
         self.tasks[1].state = TaskState::Running;
+        self.tasks[1].prio = 0;
 
         // Spawn the idle task first to set it up properly and make sure our task switching code is
         // working correctly
@@ -46,46 +49,88 @@ impl Scheduler {
     }
 
     pub fn preempt_current_task(&mut self) {
-        let t = &mut self.tasks[usize::from(self.cur_task)];
+        // Start by saving the state of the current task
+        {
+            let t = &mut self.tasks[usize::from(self.cur_task)];
 
-        let task_ra = riscv::register::mepc::read();
-        let task_sp = riscv::register::mscratch::read();
+            let task_ra = riscv::register::mepc::read();
+            let task_sp = riscv::register::mscratch::read();
 
-        t.ra = task_ra;
-        t.sp = task_sp;
+            t.ra = task_ra;
+            t.sp = task_sp;
+        }
 
-        // Find a runnable task
-        let cur_task = usize::from(self.cur_task);
-        let mut next_task = cur_task;
+        self.refresh_task_state();
 
+        // Find a runnable task, falling back on idle if nothing is found
+        let mut next_task = 0;
+
+        // We loop starting from the current task so that we "round-robin" the threads with equal
+        // priority.
+        let mut task = self.cur_task;
         loop {
-            next_task = next_task.wrapping_add(1) % MAX_TASKS;
+            task = task.wrapping_add(1) % MAX_TASKS;
 
-            let nt = self.tasks[next_task];
-
-            // Skip over task 0 which is always idle
-            if next_task != 0 && nt.runnable() {
+            if task == self.cur_task {
+                // We wrapped around
                 break;
             }
 
-            if next_task == cur_task {
-                // We wrapped around and didn't find anything to run, run idle task
-                next_task = 0;
-                break;
+            let t = self.tasks[task];
+
+            // Skip over task 0 which is always idle
+            if task == 0 || !t.runnable() {
+                continue;
+            }
+
+            if self.tasks[next_task].prio < t.prio {
+                next_task = task;
             }
         }
 
         // We could run tickless if we only have one runnable task
         schedule_preempt(TASK_SLOT_MAX_TICKS);
-        self.switch_to_task(next_task);
+
+        if next_task != self.cur_task {
+            self.switch_to_task(next_task);
+        }
+    }
+
+    fn refresh_task_state(&mut self) {
+        let now = mtime_get();
+
+        for t in &mut self.tasks.iter_mut() {
+            match t.state {
+                TaskState::Sleeping { until } if now >= until => {
+                    t.state = TaskState::Running;
+                }
+                _ => (),
+            }
+        }
+    }
+
+    pub fn sleep_current_task(&mut self, ticks: u64) {
+        if ticks > 0 {
+            let t = &mut self.tasks[self.cur_task];
+
+            let now = mtime_get();
+
+            t.state = TaskState::Sleeping {
+                until: now.saturating_add(ticks),
+            };
+        }
+
+        self.preempt_current_task();
     }
 
     fn switch_to_task(&mut self, task_id: usize) {
+        assert!(task_id < MAX_TASKS);
+
         let task = &self.tasks[task_id];
 
         assert!(!task.is_dead());
 
-        self.cur_task = task_id as u8;
+        self.cur_task = task_id;
 
         riscv::register::mscratch::write(task.sp);
         riscv::register::mepc::write(task.ra);
@@ -112,6 +157,8 @@ struct Task {
     state: TaskState,
     ra: usize,
     sp: usize,
+    /// Task priority (higher values means higher priority)
+    prio: i32,
 }
 
 impl Task {
@@ -128,6 +175,10 @@ impl Task {
 enum TaskState {
     Dead,
     Running,
+    Sleeping {
+        /// MTIME value
+        until: u64,
+    },
 }
 
 /// Use MTIMECMP to schedule an interrupt
@@ -206,7 +257,8 @@ fn mtimecmp_set(cmp: u64) {
     let h = (cmp >> 32) as u32;
 
     unsafe {
-        // Set full 1 to the low word so that we don't trigger an interrupt by mistake
+        // Set full 1 to the low word so that we don't trigger an interrupt by mistake. Not that it
+        // matters since we should call this with IRQ disabled, but still.
         MTIMECMP_L.write_volatile(!0);
         MTIMECMP_H.write_volatile(h);
         MTIMECMP_L.write_volatile(l);

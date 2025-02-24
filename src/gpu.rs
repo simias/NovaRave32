@@ -1,5 +1,4 @@
-use crate::drawTriangles3D;
-use crate::NoRa32;
+use crate::{drawTriangles3D, sync, CycleCounter, NoRa32, CPU_FREQ};
 use glam::{Mat4, Vec4};
 use std::fmt;
 
@@ -26,6 +25,8 @@ pub struct Gpu {
     /// [2]: B
     /// [3]: A
     attribs_u8: Vec<u8>,
+    /// Counter that decrements and generates a frame when it reaches 0
+    frame_cycles: CycleCounter,
 }
 
 impl Gpu {
@@ -37,6 +38,7 @@ impl Gpu {
             vertices: [Vertex::new(); 3],
             attribs_f32: Vec::new(),
             attribs_u8: Vec::new(),
+            frame_cycles: FRAME_CYCLES_30FPS,
         }
     }
 
@@ -254,6 +256,7 @@ fn handle_new_command(m: &mut NoRa32, cmd: u32) -> CommandState {
 }
 
 pub fn load_word(m: &mut NoRa32, addr: u32) -> u32 {
+    run(m);
     if addr == 0 {
         m.gpu.status()
     } else {
@@ -263,11 +266,26 @@ pub fn load_word(m: &mut NoRa32, addr: u32) -> u32 {
 }
 
 pub fn store_word(m: &mut NoRa32, addr: u32, v: u32) {
+    run(m);
+
     if addr == 0 {
         handle_command(m, v);
     } else {
         warn!("Unhandled GPU write at {:x}", addr);
     }
+}
+
+pub fn run(m: &mut NoRa32) {
+    let elapsed = sync::resync(m, GPUSYNC);
+
+    m.gpu.frame_cycles -= elapsed;
+
+    if m.gpu.frame_cycles <= 0 {
+        m.frame_counter = m.frame_counter.wrapping_add(1);
+        m.gpu.frame_cycles += FRAME_CYCLES_30FPS;
+    }
+
+    sync::next_event(m, GPUSYNC, m.gpu.frame_cycles);
 }
 
 enum CommandState {
@@ -328,6 +346,10 @@ impl Vertex {
 }
 
 const FP_SHIFT: u32 = 16;
+
+const FRAME_CYCLES_30FPS: CycleCounter = (CPU_FREQ + 15) / 30;
+
+const GPUSYNC: sync::SyncToken = sync::SyncToken::GpuTimer;
 
 #[test]
 fn test_fp32_to_f32() {

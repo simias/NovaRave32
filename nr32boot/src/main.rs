@@ -10,6 +10,7 @@ extern crate log;
 mod asm;
 mod console;
 mod scheduler;
+mod syscalls;
 mod tasks;
 mod utils;
 
@@ -43,7 +44,50 @@ pub fn rust_trap() {
             let mut sched = scheduler::get();
             sched.preempt_current_task();
         }
+        // ECALL from user mode
+        (false, 8) => handle_ecall(),
         _ => panic!("Unhandled trap {:x?}", cause),
+    }
+}
+
+fn handle_ecall() {
+    // First we have to adjust MEPC to point after the ecall instruction, otherwise it'll be
+    // executed again upon return
+    let pc = riscv::register::mepc::read();
+    riscv::register::mepc::write(pc + 4);
+
+    // We need to get the syscall code and arguments from its task since that's where the trap
+    // handler will have banked them
+    let task_sp = riscv::register::mscratch::read();
+
+    let task_reg = |reg: usize| -> usize {
+        let p = task_sp + (33 - reg) * 4;
+
+        unsafe {
+            let p = p as *const usize;
+
+            *p
+        }
+    };
+
+    /* a7 */
+    let code = task_reg(17);
+    /* a0 */
+    let arg0 = task_reg(10);
+    /* a1 */
+    let arg1 = task_reg(11);
+
+    match code {
+        // SYS_SLEEP
+        //
+        // Can also be used for yielding with `ticks` set to 0
+        0x01 => {
+            let ticks = (arg0 as u64) | ((arg1 as u64) << 32);
+
+            let mut sched = scheduler::get();
+            sched.sleep_current_task(ticks);
+        }
+        _ => panic!("Unknown syscall 0x{:02x}", code),
     }
 }
 
