@@ -1,6 +1,6 @@
 //! Main task
 
-use crate::syscalls::{msleep, wait_for_vsync};
+use crate::syscalls::{sched_yield, msleep, wait_for_vsync};
 use core::time::Duration;
 
 pub fn main() -> ! {
@@ -85,7 +85,7 @@ fn send_coords(a: i16, b: i16) {
 
 fn send_to_gpu(cmd: u32) {
     while !gpu_can_write() {
-        // yield()
+        sched_yield()
     }
 
     unsafe {

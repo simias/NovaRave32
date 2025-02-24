@@ -16,6 +16,10 @@ pub fn wait_for_vsync() {
     syscall(SYS_WAIT_EVENT, events::EV_VSYNC, 0);
 }
 
+pub fn sched_yield() {
+    syscall(SYS_SLEEP, 0, 0);
+}
+
 fn syscall(code: usize, mut arg0: usize, arg1: usize) -> usize {
     unsafe {
         asm!("ecall",
