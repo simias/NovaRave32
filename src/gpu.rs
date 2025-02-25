@@ -7,10 +7,12 @@ pub struct Gpu {
     command_state: CommandState,
     /// State of the rasterizer
     raster_state: RasterState,
-    /// Perspective matrices
+    /// Matrices
     mat: [Mat4; 4],
     /// Currently buffered vertices for triangle draw commands
     vertices: [Vertex; 3],
+    /// Matrix used for perspective transform of vertices
+    draw_mat: u8,
     /// Float vertex attributes for OpenGL:
     ///
     /// [0]: X
@@ -36,6 +38,7 @@ impl Gpu {
             raster_state: RasterState::Idle,
             mat: [Mat4::IDENTITY; 4],
             vertices: [Vertex::new(); 3],
+            draw_mat: 0,
             attribs_f32: Vec::new(),
             attribs_u8: Vec::new(),
             frame_cycles: FRAME_CYCLES_30FPS,
@@ -155,7 +158,7 @@ fn handle_command(m: &mut NoRa32, cmd: u32) {
             // figure out how many pixels will need to be rendered and therefore how much time we should
             // deduct for them.
             m.gpu.vertices[usize::from(vindex)].coords =
-                m.gpu.mat[0] * m.gpu.vertices[usize::from(vindex)].coords;
+                m.gpu.mat[usize::from(m.gpu.draw_mat)] * m.gpu.vertices[usize::from(vindex)].coords;
 
             if vindex == 2 {
                 draw_flat_triangle(m);
@@ -201,6 +204,15 @@ fn handle_new_command(m: &mut NoRa32, cmd: u32) -> CommandState {
                 );
 
                 m.gpu.raster_state = RasterState::Idle;
+            }
+            CommandState::Idle
+        }
+        // Draw config
+        0x03 => {
+            match (cmd >> 16) as u8 {
+                // Set draw matrix
+                0x01 => m.gpu.draw_mat = (cmd & 0xf) as u8,
+                conf => warn!("Unknown config command {}", conf),
             }
             CommandState::Idle
         }

@@ -8,6 +8,7 @@ pub fn main() -> ! {
 
     // Matrix 0 reset to identity
     let op = (0x10 << 24) // Matrix command
+        | (1 << 17) // Matrix 1
         | (0b11 << 14); // Clear
 
     send_to_gpu(op);
@@ -15,11 +16,19 @@ pub fn main() -> ! {
     for i in 0..3 {
         // Set matrix scale to 1/1024 on all axes
         let op = (0x10 << 24) // Matrix command
+            | (1 << 17) // Matrix 1
             | (i << 4) | i; // set [i][i]
 
         send_to_gpu(op);
         send_to_gpu((1 << 16) / 1024);
     }
+
+    // Switch to matrix 1 for drawing
+    send_to_gpu(
+        (0x03 << 24) // Draw config
+        | (1 << 16) // Set draw matrix
+        | 1,
+    );
 
     // Start draw
     send_to_gpu(0x01 << 24);
@@ -109,8 +118,8 @@ const GPU_CMD: *mut u32 = 0x1001_0000 as *mut u32;
 fn sub_task() -> ! {
     info!("Sub-task launched");
     loop {
-        info!("Sub-task sleeping 0.5s...");
-        msleep(Duration::from_millis(500));
+        info!("Sub-task sleeping...");
+        msleep(Duration::from_secs(3));
         info!("Sub-task done sleeping");
     }
 }
