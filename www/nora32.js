@@ -43,7 +43,6 @@ async function start() {
     gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
     gl.clearColor(0.0, 0.0, 0.0, 1.0);
 
-
     let rom = await fetchROM("./pkg/ROM.BIN");
 
     let nora32 = new NoRa32();
@@ -58,7 +57,9 @@ async function start() {
 }
 
 window.drawTriangles3D = function (f32_ptr, u8_ptr, count) {
-    console.log(`DRAW TRIANGLES called with ${count} vertices`);
+    // console.log(`DRAW TRIANGLES called with ${count} vertices`);
+
+    gl.enable(gl.DEPTH_TEST);
 
     let f32data = new Float32Array(wasm.memory.buffer, f32_ptr, count * 4);
     let u8data = new Uint8Array(wasm.memory.buffer, u8_ptr, count * 4);

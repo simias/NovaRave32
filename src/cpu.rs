@@ -433,6 +433,12 @@ pub fn step(m: &mut NoRa32) {
 
             m.cpu.xset(rd, v & imm.extend());
         }
+        Instruction::SraImm { rd, rs1, shamt } => {
+            let v = m.cpu.xget(rs1) as i32;
+
+            m.cpu
+                .xset(rd, v.checked_shr(u32::from(shamt)).unwrap_or(0) as u32);
+        }
         Instruction::SrlImm { rd, rs1, shamt } => {
             let v = m.cpu.xget(rs1);
 
@@ -511,6 +517,17 @@ pub fn step(m: &mut NoRa32) {
 
             let v = m.load_byte(addr);
             m.cpu.xset(rd, v as u32)
+        }
+        Instruction::Lhu { rd, rs1, off } => {
+            let base = m.cpu.xget(rs1);
+            let addr = base.wrapping_add(off.extend());
+
+            if addr & 1 == 0 {
+                let v = m.load_halfword(addr);
+                m.cpu.xset(rd, v as u32)
+            } else {
+                panic!("Misaligned store {:x} {:?}", addr, m.cpu);
+            }
         }
         Instruction::Lw { rd, rs1, off } => {
             let base = m.cpu.xget(rs1);

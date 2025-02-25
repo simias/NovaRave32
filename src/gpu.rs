@@ -105,13 +105,13 @@ fn draw_flat_triangle(m: &mut NoRa32) {
     // Calculate the oriented/signed area of the triangle. The 0.25 is because the screen
     // coordinates go from -1 to +1 in either direction, so a quad covering the entire screen would
     // have an area of 4. Since we want pixels, we have to ajust.
-    let area = (640. * 480. * 0.25 * 0.5)
-        * ((x0 * y1 + x1 * y2 + x2 * y0) - (x0 * y2 + x1 * y0 + x2 * y1));
-
-    if area <= 0. {
-        // Clockwise triangle -> cull
-        return;
-    }
+    // let area = (640. * 480. * 0.25 * 0.5)
+    //     * ((x0 * y1 + x1 * y2 + x2 * y0) - (x0 * y2 + x1 * y0 + x2 * y1));
+    //
+    // if area <= 0. {
+    //     // Clockwise triangle -> cull
+    //     return;
+    // }
 
     for i in 0..3 {
         let v = &m.gpu.vertices[i];
@@ -205,6 +205,9 @@ fn handle_new_command(m: &mut NoRa32, cmd: u32) -> CommandState {
                     m.gpu.attribs_f32.len() / 4,
                 );
 
+                m.gpu.attribs_f32.clear();
+                m.gpu.attribs_u8.clear();
+
                 m.gpu.raster_state = RasterState::Idle;
             }
             CommandState::Idle
@@ -220,26 +223,27 @@ fn handle_new_command(m: &mut NoRa32, cmd: u32) -> CommandState {
         }
         // Matrix
         0x10 => {
-            let mindex = ((cmd >> 17) & 0xf) as usize;
+            let mindex = ((cmd >> 12) & 0x3) as usize;
 
-            let valid = mindex < m.gpu.mat.len();
-
-            if !valid {
-                warn!("Specified matrix out of range: {}", mindex);
-            }
-
-            match (cmd >> 14) & 3 {
+            match (cmd >> 16) & 0xff {
+                // Reset matrix to identity
+                0x00 => {
+                    m.gpu.mat[mindex] = Mat4::IDENTITY;
+                    CommandState::Idle
+                }
                 // Set single component
-                0b00 => CommandState::MatrixSetComponent {
+                0x01 => CommandState::MatrixSetComponent {
                     mindex: mindex as u8,
                     i: ((cmd >> 4) & 3) as u8,
                     j: (cmd & 3) as u8,
                 },
-                // Reset matrix to identity
-                0b11 => {
-                    if valid {
-                        m.gpu.mat[mindex] = Mat4::IDENTITY;
-                    }
+                // Multiply
+                0x02 => {
+                    let maindex = ((cmd >> 4) & 3) as usize;
+                    let mbindex = (cmd & 3) as usize;
+
+                    m.gpu.mat[mindex] = m.gpu.mat[maindex] * m.gpu.mat[mbindex];
+
                     CommandState::Idle
                 }
                 mop => {

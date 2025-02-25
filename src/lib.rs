@@ -222,7 +222,7 @@ impl NoRa32 {
         panic!("Can't load word from {:x} {:?}", addr, self.cpu);
     }
 
-    /// Load bite from `addr`. `addr` is assumed to be correctly aligned.
+    /// Load byte from `addr`. `addr` is assumed to be correctly aligned.
     fn load_byte(&mut self, addr: u32) -> u8 {
         self.tick(1);
 
@@ -237,6 +237,23 @@ impl NoRa32 {
         }
 
         panic!("Can't load byte from {:x} {:?}", addr, self.cpu);
+    }
+
+    /// Load halfword from `addr`. `addr` is assumed to be correctly aligned.
+    fn load_halfword(&mut self, addr: u32) -> u16 {
+        self.tick(1);
+
+        if let Some(off) = RAM.contains(addr) {
+            let word = self.ram[(off >> 2) as usize];
+            return (word >> ((off & 1) << 4)) as u16;
+        }
+
+        if let Some(off) = ROM.contains(addr) {
+            let word = self.rom[(off >> 2) as usize];
+            return (word >> ((off & 1) << 4)) as u16;
+        }
+
+        panic!("Can't load halfword from {:x} {:?}", addr, self.cpu);
     }
 
     // Print any message in the debug console to stdout and reset the buffer

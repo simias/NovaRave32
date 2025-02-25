@@ -174,6 +174,8 @@ fn decode_page(m: &mut NoRa32, lut_idx: usize) -> usize {
                         0b010 => Instruction::Lw { rd, rs1, off },
                         // LBU
                         0b100 => Instruction::Lbu { rd, rs1, off },
+                        // LHU
+                        0b101 => Instruction::Lhu { rd, rs1, off },
                         _ => unkn,
                     }
                 }
@@ -221,6 +223,12 @@ fn decode_page(m: &mut NoRa32, lut_idx: usize) -> usize {
                         0b101 => match funct7 {
                             // SRLI
                             0b0000000 => Instruction::SrlImm {
+                                rd,
+                                rs1,
+                                shamt: shamt(op),
+                            },
+                            // SRAI
+                            0b0100000 => Instruction::SraImm {
                                 rd,
                                 rs1,
                                 shamt: shamt(op),
@@ -468,6 +476,12 @@ fn decode_page(m: &mut NoRa32, lut_idx: usize) -> usize {
                             rs1: cr_7x(op),
                             shamt: c_shamt(op),
                         },
+                        // C.SRAI
+                        (0b10_0001, _) | (0b10_0101, _) => Instruction::SraImm {
+                            rd: cr_7x(op).out(),
+                            rs1: cr_7x(op),
+                            shamt: c_shamt(op),
+                        },
                         // C.ANDI
                         (0b10_0010, _) | (0b10_0110, _) => Instruction::AndImm {
                             rd: cr_7x(op).out(),
@@ -699,6 +713,11 @@ pub enum Instruction {
         rs1: Reg,
         imm: i16,
     },
+    SraImm {
+        rd: Reg,
+        rs1: Reg,
+        shamt: u8,
+    },
     SrlImm {
         rd: Reg,
         rs1: Reg,
@@ -754,6 +773,11 @@ pub enum Instruction {
 
     // Memory access
     Lbu {
+        rd: Reg,
+        rs1: Reg,
+        off: i16,
+    },
+    Lhu {
         rd: Reg,
         rs1: Reg,
         off: i16,
