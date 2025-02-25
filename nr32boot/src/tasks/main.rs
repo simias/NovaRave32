@@ -71,7 +71,7 @@ pub fn main() -> ! {
     msleep(Duration::from_secs(1));
     info!("Done");
 
-    spawn_task(sub_task, -1);
+    spawn_task(sub_task, 1);
 
     loop {
         for _ in 0..30 {
@@ -107,9 +107,10 @@ fn gpu_status() -> u32 {
 const GPU_CMD: *mut u32 = 0x1001_0000 as *mut u32;
 
 fn sub_task() -> ! {
+    info!("Sub-task launched");
     loop {
-        info!("Sub-task sleeping");
-        msleep(Duration::from_millis(2200));
+        info!("Sub-task sleeping 0.5s...");
+        msleep(Duration::from_millis(500));
         info!("Sub-task done sleeping");
     }
 }

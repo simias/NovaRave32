@@ -64,7 +64,7 @@ impl Scheduler {
         // Find a runnable task, falling back on idle if nothing is found
         let mut next_task = 0;
 
-        // We loop starting from the current task so that we "round-robin" the threads with equal
+        // We loop starting from the next task so that we "round-robin" the threads with equal
         // priority.
         let mut task = self.cur_task;
         let ntasks = self.tasks.len();
@@ -74,24 +74,59 @@ impl Scheduler {
                 task = 0;
             }
 
+            let t = &self.tasks[task];
+
+            if t.runnable() {
+                if self.tasks[next_task].prio < t.prio {
+                    next_task = task;
+                }
+            }
+
             if task == self.cur_task {
                 // We wrapped around
                 break;
             }
+        }
 
-            let t = &self.tasks[task];
+        // Now we figure out when we want to schedule the next timer IRQ
+        let now = mtime_get();
+        // If we have no other task to run we can just delay the preemption forever.
+        let mut run_until = now + u64::from(MTIME_HZ);
+        let next_prio = self.tasks[next_task].prio;
+        let contention_until = now + u64::from(TASK_SLOT_ROUND_ROBBIN);
 
-            if !t.runnable() {
+        for (tid, t) in self.tasks.iter().enumerate() {
+            if tid == next_task {
+                // We can't preempt ourselves...
                 continue;
             }
 
-            if self.tasks[next_task].prio < t.prio {
-                next_task = task;
+            if t.prio < next_prio {
+                // Don't allow lower priority tasks from preempting us
+                continue;
             }
+
+            match t.state {
+                TaskState::Running => {
+                    // This task must have the same priority as us (otherwise it would have been picked
+                    // above) so we're going to force a preemption in a short while
+                    run_until = run_until.min(contention_until);
+                }
+                TaskState::Sleeping { until } => {
+                    run_until = if t.prio > next_prio {
+                        run_until.min(until)
+                    } else {
+                        // If priority is the same we don't have to wake up when the sleep elapses,
+                        // we can keep going and delay the other task
+                        run_until.min(contention_until)
+                    };
+                }
+                // Task is waiting for something else, no point
+                _ => continue,
+            };
         }
 
-        // We could run tickless if we only have one runnable task
-        schedule_preempt(TASK_SLOT_MAX_TICKS);
+        schedule_preempt(run_until);
 
         if next_task != self.cur_task {
             self.switch_to_task(next_task);
@@ -204,11 +239,8 @@ enum TaskState {
 }
 
 /// Use MTIMECMP to schedule an interrupt
-fn schedule_preempt(delay_ticks: u32) {
-    let now = mtime_get();
-
-    // Should never overflow given that it's a 64bit counter running at 48kHz
-    mtimecmp_set(now + u64::from(delay_ticks));
+fn schedule_preempt(until: u64) {
+    mtimecmp_set(until);
 
     // Make sure the MTIE is set
     unsafe {
@@ -246,9 +278,9 @@ fn stack_alloc(stack_size: usize) -> (Box<[StackWord]>, usize) {
     (stack, top)
 }
 
-/// How long is a task allowed to hog the CPU if others are also runnable. Expressed in MTIME timer
-/// ticks
-const TASK_SLOT_MAX_TICKS: u32 = MTIME_HZ / 10;
+/// If two or more tasks with equal priority want to run at the same time, how long should they be
+/// allowed to run before being preempted?
+const TASK_SLOT_ROUND_ROBBIN: u32 = MTIME_HZ / 120;
 
 /// MTIME[31:0]
 const MTIME_L: *mut usize = 0xffff_fff0 as *mut usize;
