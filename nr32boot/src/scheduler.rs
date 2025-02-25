@@ -28,7 +28,7 @@ impl Scheduler {
         self.tasks = Vec::with_capacity(4);
 
         // Create the idle task.
-        let idle_task = unsafe { core::mem::transmute(_idle_task as usize) };
+        let idle_task = unsafe { core::mem::transmute::<usize, fn() -> !>(_idle_task as usize) };
         self.spawn_task(idle_task, i32::MIN, BANKED_REGISTER_LEN);
         self.switch_to_task(0);
     }
@@ -76,10 +76,8 @@ impl Scheduler {
 
             let t = &self.tasks[task];
 
-            if t.runnable() {
-                if self.tasks[next_task].prio < t.prio {
-                    next_task = task;
-                }
+            if t.runnable() && self.tasks[next_task].prio < t.prio {
+                next_task = task;
             }
 
             if task == self.cur_task {

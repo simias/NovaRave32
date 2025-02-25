@@ -141,7 +141,7 @@ fn handle_command(m: &mut NoRa32, cmd: u32) {
             CommandState::TriangleZ { vindex, gouraud }
         }
         CommandState::TriangleZ { vindex, gouraud } => {
-            let z = (cmd & 0xffff) as f32;
+            let z = (cmd & 0xffff) as i16 as f32;
 
             m.gpu.vertices[usize::from(vindex)].coords[2] = z;
 
@@ -154,11 +154,13 @@ fn handle_command(m: &mut NoRa32, cmd: u32) {
             m.gpu.vertices[usize::from(vindex)].coords[0] = x;
             m.gpu.vertices[usize::from(vindex)].coords[1] = y;
 
+            let mat = &m.gpu.mat[usize::from(m.gpu.draw_mat)];
+
             // We could let the vertex shader deal with this of course but we need to compute that to
             // figure out how many pixels will need to be rendered and therefore how much time we should
             // deduct for them.
             m.gpu.vertices[usize::from(vindex)].coords =
-                m.gpu.mat[usize::from(m.gpu.draw_mat)] * m.gpu.vertices[usize::from(vindex)].coords;
+                *mat * m.gpu.vertices[usize::from(vindex)].coords;
 
             if vindex == 2 {
                 draw_flat_triangle(m);

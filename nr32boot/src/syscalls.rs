@@ -16,10 +16,6 @@ pub fn wait_for_vsync() {
     syscall(SYS_WAIT_EVENT, events::EV_VSYNC, 0);
 }
 
-pub fn sched_yield() {
-    syscall(SYS_SLEEP, 0, 0);
-}
-
 pub fn spawn_task(f: fn() -> !, prio: i32) {
     syscall(SYS_SPAWN_TASK, f as usize, prio as usize);
 }
@@ -33,7 +29,7 @@ fn syscall(code: usize, mut arg0: usize, arg1: usize) -> usize {
         );
     }
 
-    return arg0;
+    arg0
 }
 
 /// Suspend task for [a1:a0] MTIME ticks

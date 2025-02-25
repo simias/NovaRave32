@@ -9,6 +9,8 @@ extern crate log;
 
 mod asm;
 mod console;
+mod gpu;
+mod math;
 mod scheduler;
 mod syscalls;
 mod tasks;
@@ -107,7 +109,7 @@ fn handle_ecall() {
         }
         syscalls::SYS_WAIT_EVENT => sched.wait_event_current_task(arg0),
         syscalls::SYS_SPAWN_TASK => {
-            let f = unsafe { core::mem::transmute(arg0) };
+            let f = unsafe { core::mem::transmute::<usize, fn() -> !>(arg0) };
             let prio = arg1 as i32;
 
             sched.spawn_task(f, prio, TASK_STACK_SIZE);
