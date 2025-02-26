@@ -33,7 +33,12 @@ impl Fp32 {
     }
 
     pub const fn neg(self) -> Fp32 {
-        Fp32(-self.0)
+        if self.0 == i32::MIN {
+            // Can't represent the negative, adjust by one
+            Fp32::MAX
+        } else {
+            Fp32(-self.0)
+        }
     }
 
     pub const fn with_sign(self, sign: i32) -> Fp32 {

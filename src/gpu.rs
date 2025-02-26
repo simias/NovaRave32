@@ -132,9 +132,9 @@ fn handle_command(m: &mut NoRa32, cmd: u32) {
     m.gpu.command_state = match m.gpu.command_state {
         CommandState::Idle => handle_new_command(m, cmd),
         CommandState::TriangleRgb { vindex, gouraud } => {
-            let r = (cmd >> 16) as u8;
+            let b = (cmd >> 16) as u8;
             let g = (cmd >> 8) as u8;
-            let b = cmd as u8;
+            let r = cmd as u8;
 
             m.gpu.vertices[usize::from(vindex)].color = [r, g, b];
 
@@ -258,9 +258,9 @@ fn handle_new_command(m: &mut NoRa32, cmd: u32) -> CommandState {
 
             let gouraud = blend_mode == 2;
 
-            let r = (cmd >> 16) as u8;
+            let b = (cmd >> 16) as u8;
             let g = (cmd >> 8) as u8;
-            let b = cmd as u8;
+            let r = cmd as u8;
 
             for i in 0..3 {
                 m.gpu.vertices[i].color = [r, g, b];

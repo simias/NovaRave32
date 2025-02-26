@@ -2,7 +2,7 @@ use crate::MTIME_HZ;
 use core::arch::asm;
 use core::time::Duration;
 
-pub fn msleep(duration: Duration) {
+pub fn sleep(duration: Duration) {
     // Convert in number of ticks
     let micros = duration.as_micros() as u64;
     let f = u64::from(MTIME_HZ);

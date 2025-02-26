@@ -1,9 +1,9 @@
-use crate::syscalls::msleep;
+use crate::syscalls::sleep;
 use core::time::Duration;
 
 pub fn send_to_gpu(cmd: u32) {
     while !gpu_can_write() {
-        msleep(Duration::from_millis(1))
+        sleep(Duration::from_millis(1))
     }
 
     unsafe {
