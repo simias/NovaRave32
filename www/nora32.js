@@ -7,8 +7,9 @@ const wasm = await init();
 const canvas = document.getElementById('nora32-screen');
 canvas.style['image-rendering'] = 'pixelated';
 const gl = canvas.getContext('webgl2', { antialias: false });
-const f32_buffer = gl.createBuffer();
+const i16_buffer = gl.createBuffer();
 const u8_buffer = gl.createBuffer();
+let projectionLocation = undefined;
 
 async function start() {
 
@@ -28,16 +29,20 @@ async function start() {
 
     const positionLocation = gl.getAttribLocation(program, "a_position");
     const colorLocation = gl.getAttribLocation(program, "a_color");
+    const matrixIndex = gl.getAttribLocation(program, "a_projection_index");
+
+    projectionLocation = gl.getUniformLocation(program, "u_projections");
 
     gl.enableVertexAttribArray(positionLocation);
     gl.enableVertexAttribArray(colorLocation);
+    gl.enableVertexAttribArray(matrixIndex);
 
-    gl.bindBuffer(gl.ARRAY_BUFFER, f32_buffer);
-    const stride = Float32Array.BYTES_PER_ELEMENT * 4;
-    gl.vertexAttribPointer(positionLocation, 4, gl.FLOAT, false, stride, 0);
+    gl.bindBuffer(gl.ARRAY_BUFFER, i16_buffer);
+    gl.vertexAttribIPointer(positionLocation, 3, gl.SHORT, 0, 0);
 
     gl.bindBuffer(gl.ARRAY_BUFFER, u8_buffer);
-    gl.vertexAttribIPointer(colorLocation, 4, gl.UNSIGNED_BYTE, 4, 0);
+    gl.vertexAttribIPointer(colorLocation, 4, gl.UNSIGNED_BYTE, 5, 0);
+    gl.vertexAttribIPointer(matrixIndex, 1, gl.UNSIGNED_BYTE, 5, 4);
 
     gl.enable(gl.BLEND);
     gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
@@ -56,15 +61,18 @@ async function start() {
 
 }
 
-window.drawTriangles3D = function (f32_ptr, u8_ptr, count) {
-    // console.log(`DRAW TRIANGLES called with ${count} vertices`);
+window.drawTriangles3D = function (mat_f32_ptr, mat_count, i16_ptr, u8_ptr, count) {
+    // console.log(`DRAW TRIANGLES called with ${count} vertices and ${mat_count} matrices`);
 
     gl.enable(gl.DEPTH_TEST);
 
-    let f32data = new Float32Array(wasm.memory.buffer, f32_ptr, count * 4);
-    let u8data = new Uint8Array(wasm.memory.buffer, u8_ptr, count * 4);
+    let matdata = new Float32Array(wasm.memory.buffer, mat_f32_ptr, mat_count * 16);
+    let f32data = new Int16Array(wasm.memory.buffer, i16_ptr, count * 3);
+    let u8data = new Uint8Array(wasm.memory.buffer, u8_ptr, count * 5);
 
-    gl.bindBuffer(gl.ARRAY_BUFFER, f32_buffer);
+    gl.uniformMatrix4fv(projectionLocation, false, matdata);
+
+    gl.bindBuffer(gl.ARRAY_BUFFER, i16_buffer);
     gl.bufferData(gl.ARRAY_BUFFER, f32data, gl.DYNAMIC_DRAW);
 
     gl.bindBuffer(gl.ARRAY_BUFFER, u8_buffer);
@@ -121,13 +129,17 @@ function compileShader(gl, type, source) {
 }
 
 const noRaVertexShader = `#version 300 es
-    in vec4 a_position;
+    in ivec3 a_position;
     in uvec4 a_color;
+    in uint a_projection_index;
 
     out vec4 v_color;
 
+    uniform mat4 u_projections[32];
+
     void main() {
-        gl_Position = a_position;
+        mat4 m = u_projections[a_projection_index];
+        gl_Position = m * vec4(a_position, 1.);
         v_color = vec4(a_color) / 255.;
     }
 `;

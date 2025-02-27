@@ -23,7 +23,13 @@ fn main() {
 #[wasm_bindgen]
 extern "C" {
     /// Function used to draw 3D primitives
-    fn drawTriangles3D(f32_ptr: *const f32, u8_ptr: *const u8, count: usize);
+    fn drawTriangles3D(
+        mat_f32_ptr: *const [[f32; 4]; 4],
+        mat_count: usize,
+        i16_ptr: *const i16,
+        u8_ptr: *const u8,
+        count: usize,
+    );
 }
 
 #[wasm_bindgen]
