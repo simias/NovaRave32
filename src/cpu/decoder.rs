@@ -170,6 +170,8 @@ fn decode_page(m: &mut NoRa32, lut_idx: usize) -> usize {
                     let off = imm_20_se(op);
 
                     match funct3 {
+                        // LH
+                        0b001 => Instruction::Lh { rd, rs1, off },
                         // LW
                         0b010 => Instruction::Lw { rd, rs1, off },
                         // LBU
@@ -283,6 +285,8 @@ fn decode_page(m: &mut NoRa32, lut_idx: usize) -> usize {
                         0b000_0000 => match funct3 {
                             // ADD
                             0b000 => Instruction::Add { rd, rs1, rs2 },
+                            // SLL
+                            0b001 => Instruction::Sll { rd, rs1, rs2 },
                             // SLTU
                             0b011 => Instruction::Sltu { rd, rs1, rs2 },
                             // XOR
@@ -723,6 +727,11 @@ pub enum Instruction {
         rs1: Reg,
         shamt: u8,
     },
+    Sll {
+        rd: Reg,
+        rs1: Reg,
+        rs2: Reg,
+    },
     SllImm {
         rd: Reg,
         rs1: Reg,
@@ -773,6 +782,11 @@ pub enum Instruction {
 
     // Memory access
     Lbu {
+        rd: Reg,
+        rs1: Reg,
+        off: i16,
+    },
+    Lh{
         rd: Reg,
         rs1: Reg,
         off: i16,

@@ -155,7 +155,7 @@ impl NoRa32 {
 
         if let Some(off) = RAM.contains(addr) {
             let wo = (off >> 2) as usize;
-            let bitpos = (off & 3) << 3;
+            let bitpos = (off & 2) << 3;
 
             let mut word = self.ram[wo];
             word &= !(0xffff << bitpos);
@@ -251,12 +251,12 @@ impl NoRa32 {
 
         if let Some(off) = RAM.contains(addr) {
             let word = self.ram[(off >> 2) as usize];
-            return (word >> ((off & 1) << 4)) as u16;
+            return (word >> ((off & 2) << 3)) as u16;
         }
 
         if let Some(off) = ROM.contains(addr) {
             let word = self.rom[(off >> 2) as usize];
-            return (word >> ((off & 1) << 4)) as u16;
+            return (word >> ((off & 2) << 3)) as u16;
         }
 
         panic!("Can't load halfword from {:x} {:?}", addr, self.cpu);

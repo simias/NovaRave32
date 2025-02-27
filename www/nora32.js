@@ -56,13 +56,11 @@ async function start() {
 
     setInterval(() => {
         nora32.run_frame()
-        // console.log("run frame done");
     }, 1000/30);
-
 }
 
 window.drawTriangles3D = function (mat_f32_ptr, mat_count, i16_ptr, u8_ptr, count) {
-    // console.log(`DRAW TRIANGLES called with ${count} vertices and ${mat_count} matrices`);
+    // console.log(`DRAW TRIANGLES called with ${count} vertices and ${mat_count} matrices (${count / 3} triangles)`);
 
     gl.enable(gl.DEPTH_TEST);
 
