@@ -1,7 +1,6 @@
 #![no_std]
 #![no_main]
 
-// Default panic handler that just loops
 extern crate alloc;
 
 #[macro_use]

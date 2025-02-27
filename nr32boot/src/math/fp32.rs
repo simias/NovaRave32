@@ -8,7 +8,7 @@ pub struct Fp32(i32);
 impl Fp32 {
     pub const MAX: Fp32 = Fp32(i32::MAX);
 
-    /// We use s15.16 fixed point
+    /// We use s16.16 fixed point
     const FP_SHIFT: u32 = 16;
     const F32_MUL: f32 = (1 << Fp32::FP_SHIFT) as f32;
 
@@ -132,13 +132,3 @@ impl fmt::Display for Fp32 {
         v.fmt(f)
     }
 }
-
-// fn main() {
-//     let i: Fp32 = 3.into();
-//
-//     println!("{} {}", i, i.with_sign(-1));
-//
-//     let i: Fp32 = 1.5.into();
-//     println!("{} {}", i, i.with_sign(-1));
-//
-// }
