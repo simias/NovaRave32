@@ -4,8 +4,7 @@ use crate::gpu::send_to_gpu;
 use crate::math::{
     matrix,
     matrix::{MAT0, MAT1, MAT2, MAT3},
-    Angle, Fp32,
-    Vec3
+    Angle, Fp32, Vec3,
 };
 use crate::syscalls::{sleep, spawn_task, wait_for_vsync};
 use core::time::Duration;
@@ -18,10 +17,10 @@ pub fn main() -> ! {
     // MAT1: Camera matrix
     matrix::perspective(
         MAT1,
-        Angle::from_degrees(80.into()),
+        Angle::from_degrees(120.into()),
         Fp32::ratio(640, 480),
-        1.into(),
-        1000.into(),
+        30.into(),
+        100.into(),
     );
 
     let mut angle_x = Angle::from_degrees(0.into());
@@ -46,7 +45,7 @@ pub fn main() -> ! {
         matrix::multiply(MAT3, MAT3, MAT2);
 
         // Build scaling matrix in MAT2
-        matrix::scale(MAT2, 0.05.into(), 0.05.into(), 0.05.into());
+        matrix::scale(MAT2, 0.1.into(), 0.1.into(), 0.1.into());
 
         // M2 = Rotation * Scaling
         matrix::multiply(MAT2, MAT3, MAT2);
@@ -70,11 +69,11 @@ pub fn main() -> ! {
         );
 
         // V1 Z
-        send_coords(50, 0);
+        send_coords(0, 0);
         // V1 Y | X
         send_coords(600, 900);
         // V2 Z
-        send_coords(-50, 0);
+        send_coords(-0, 0);
         // V2 Y | X
         send_coords(-300, -200);
         // V3 Z
@@ -91,7 +90,7 @@ pub fn main() -> ! {
         matrix::multiply(MAT3, MAT3, MAT2);
 
         // Build scaling matrix in MAT2
-        matrix::scale(MAT2, 0.1.into(), 0.1.into(), 0.2.into());
+        matrix::scale(MAT2, 0.1.into(), 0.2.into(), 0.1.into());
 
         // M2 = Rotation * Scaling
         matrix::multiply(MAT2, MAT3, MAT2);
@@ -106,11 +105,11 @@ pub fn main() -> ! {
 
         matrix::set_draw_matrix(MAT0);
 
-
         for y in 0..18 {
             for x in 0..18 {
                 // Gouraud octahedron
-                let (vertices, indices) = build_octahedron_strip([(9 - x) * 50, (9 - y) * 50, 0].into(), 100);
+                let (vertices, indices) =
+                    build_octahedron_strip([(9 - x) * 50, (9 - y) * 50, y * x + x * x].into(), 100);
 
                 for chunk in indices.chunks(3) {
                     if let &[a, b, c] = chunk {
@@ -131,27 +130,6 @@ pub fn main() -> ! {
                 }
             }
         }
-        // send_to_gpu(
-        //     (0x40 << 24)
-        //     | (2 << 25) // Gouraud
-        //     | 0x00ff00, // V1 color
-        // );
-        // // V1 Z
-        // send_coords(0, 0);
-        // // V1 Y | X
-        // send_coords(0, 500);
-        // // V2 color
-        // send_to_gpu(0xff0000);
-        // // V2 Z
-        // send_coords(0, 0);
-        // // V2 Y | X
-        // send_coords(-500, -500);
-        // // V3 color
-        // send_to_gpu(0x0000ff);
-        // // V3 Z
-        // send_coords(0, 0);
-        // // V3 Y | X
-        // send_coords(500, -500);
 
         // End draw
         send_to_gpu(0x02 << 24);
@@ -176,23 +154,16 @@ fn sub_task() -> ! {
 // `c`. Returns the 10 vertices and the indices to build the 8 triangles
 fn build_octahedron_strip(c: Vec3<i16>, r: i16) -> ([Vec3<i16>; 6], [u8; 3 * 8]) {
     let vertices = [
-        c + [ 0, r, 0 ], // 0 +y
-        c + [ 0, -r, 0 ],// 1 -y
-        c + [ r, 0, 0 ], // 2 +x
-        c + [ -r, 0, 0 ],// 3 -x
-        c + [ 0, 0, r ], // 4 +z
-        c + [ 0, 0, -r ],// 5 -z
+        c + [0, r, 0],  // 0 +y
+        c + [0, -r, 0], // 1 -y
+        c + [r, 0, 0],  // 2 +x
+        c + [-r, 0, 0], // 3 -x
+        c + [0, 0, r],  // 4 +z
+        c + [0, 0, -r], // 5 -z
     ];
 
     let indices = [
-        0, 3, 5,
-        1, 5, 3,
-        0, 5, 2,
-        1, 2, 5,
-        0, 2, 4,
-        1, 4, 2,
-        0, 4, 3,
-        1, 3, 4,
+        0, 3, 5, 1, 5, 3, 0, 5, 2, 1, 2, 5, 0, 2, 4, 1, 4, 2, 0, 4, 3, 1, 3, 4,
     ];
 
     (vertices, indices)

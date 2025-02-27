@@ -30,6 +30,9 @@ extern "C" {
         u8_ptr: *const u8,
         count: usize,
     );
+
+    /// Called when a new frame should be presented
+    fn displayFramebuffer();
 }
 
 #[wasm_bindgen]

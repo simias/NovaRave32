@@ -1,4 +1,4 @@
-use crate::{drawTriangles3D, irq, sync, CycleCounter, NoRa32, CPU_FREQ};
+use crate::{displayFramebuffer, drawTriangles3D, irq, sync, CycleCounter, NoRa32, CPU_FREQ};
 use glam::Mat4;
 use std::fmt;
 
@@ -128,6 +128,11 @@ fn draw_flat_triangle(m: &mut NoRa32) {
         m.gpu.attribs_u8.push(255);
         m.gpu.attribs_u8.push(matrix_off);
     }
+
+    if m.gpu.attribs_i16.len() > 4000 {
+        // Flush to OpenGL
+        do_draw(m);
+    }
 }
 
 fn handle_command(m: &mut NoRa32, cmd: u32) {
@@ -181,6 +186,10 @@ fn handle_command(m: &mut NoRa32, cmd: u32) {
 
 /// Send draw commands to OpenGL and reset all the buffers
 fn do_draw(m: &mut NoRa32) {
+    if m.gpu.attribs_i16.is_empty() {
+        return;
+    }
+
     drawTriangles3D(
         m.gpu.matrices_f32.as_ptr(),
         m.gpu.matrices_f32.len(),
@@ -208,6 +217,8 @@ fn handle_new_command(m: &mut NoRa32, cmd: u32) -> CommandState {
         }
         // Draw end
         0x02 => {
+            do_draw(m);
+            displayFramebuffer();
             if m.gpu.raster_state == RasterState::Drawing {
                 do_draw(m);
                 m.gpu.raster_state = RasterState::Idle;
@@ -306,6 +317,7 @@ pub fn run(m: &mut NoRa32) {
         m.frame_counter = m.frame_counter.wrapping_add(1);
         m.gpu.frame_cycles += FRAME_CYCLES_30FPS;
         irq::trigger(m, irq::Interrupt::VSync);
+        do_draw(m);
     }
 
     sync::next_event(m, GPUSYNC, m.gpu.frame_cycles);

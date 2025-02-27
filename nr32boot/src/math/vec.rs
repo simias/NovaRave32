@@ -1,11 +1,13 @@
-use core::ops::{Add, AddAssign, Index};
 use core::fmt;
+use core::ops::{Add, AddAssign, Index};
 
 #[derive(Copy, Clone)]
 pub struct Vec3<T>([T; 3]);
 
-impl<T> Vec3<T> 
-where T: Copy {
+impl<T> Vec3<T>
+where
+    T: Copy,
+{
     pub fn x(self) -> T {
         self[0]
     }
@@ -19,8 +21,10 @@ where T: Copy {
     }
 }
 
-impl<T> fmt::Display for Vec3<T> 
-where T: fmt::Display {
+impl<T> fmt::Display for Vec3<T>
+where
+    T: fmt::Display,
+{
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "[")?;
         for c in &self.0 {
@@ -31,8 +35,10 @@ where T: fmt::Display {
     }
 }
 
-impl<T> fmt::Debug for Vec3<T> 
-where T: fmt::Debug {
+impl<T> fmt::Debug for Vec3<T>
+where
+    T: fmt::Debug,
+{
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "[")?;
         for c in &self.0 {
@@ -69,11 +75,7 @@ where
     type Output = Vec3<<T as Add>::Output>;
 
     fn add(self, rhs: Vec3<T>) -> Self::Output {
-        Vec3([
-            self[0] + rhs[0],
-            self[1] + rhs[1],
-            self[2] + rhs[2],
-        ])
+        Vec3([self[0] + rhs[0], self[1] + rhs[1], self[2] + rhs[2]])
     }
 }
 

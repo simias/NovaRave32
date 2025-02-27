@@ -786,7 +786,7 @@ pub enum Instruction {
         rs1: Reg,
         off: i16,
     },
-    Lh{
+    Lh {
         rd: Reg,
         rs1: Reg,
         off: i16,
