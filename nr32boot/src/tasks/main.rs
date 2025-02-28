@@ -17,10 +17,10 @@ pub fn main() -> ! {
     // MAT1: Camera matrix
     matrix::perspective(
         MAT1,
-        Angle::from_degrees(120.into()),
+        Angle::from_degrees(80.into()),
         Fp32::ratio(640, 480),
-        30.into(),
-        100.into(),
+        1.into(),
+        1000.into(),
     );
 
     let mut angle_x = Angle::from_degrees(0.into());
@@ -30,27 +30,27 @@ pub fn main() -> ! {
     let y_increment = Angle::from_degrees((-1).into());
     let z_increment = Angle::from_degrees((1).into());
 
+    let ship = include_bytes!("assets/ship.nr3d");
+
     loop {
-        angle_x += x_increment;
-        angle_y += y_increment;
-        angle_z += z_increment;
+        // Start draw
+        send_to_gpu(0x01 << 24);
 
-        // Build rotation matrix in MAT3
-        matrix::rotate_y(MAT3, angle_y);
+        matrix::rotate_y(MAT3, angle_z);
 
-        matrix::rotate_z(MAT2, angle_x);
+        matrix::rotate_z(MAT2, angle_y);
         matrix::multiply(MAT3, MAT3, MAT2);
 
-        matrix::rotate_x(MAT2, angle_z);
+        matrix::rotate_x(MAT2, angle_x);
         matrix::multiply(MAT3, MAT3, MAT2);
 
         // Build scaling matrix in MAT2
-        matrix::scale(MAT2, 0.1.into(), 0.1.into(), 0.1.into());
+        matrix::scale(MAT2, 0.01.into(), 0.01.into(), 0.01.into());
 
         // M2 = Rotation * Scaling
         matrix::multiply(MAT2, MAT3, MAT2);
 
-        matrix::translate(MAT3, 0.into(), 0.into(), (-100).into());
+        matrix::translate(MAT3, 0.into(), 0.into(), (-300).into());
 
         // M2 = Translation * Rotation * Scaling
         matrix::multiply(MAT2, MAT3, MAT2);
@@ -60,26 +60,19 @@ pub fn main() -> ! {
 
         matrix::set_draw_matrix(MAT0);
 
-        // Start draw
-        send_to_gpu(0x01 << 24);
+        let mut start = false;
+        for b in ship.chunks_exact(4) {
+            let w = u32::from_le_bytes([b[0], b[1], b[2], b[3]]);
+            if !start && w != 0 {
+                continue;
+            }
+            start = true;
+            send_to_gpu(w);
+        }
 
-        // Flat triangle
-        send_to_gpu(
-            (0x40 << 24) | 0x4f4f2f, // Triangle color
-        );
-
-        // V1 Z
-        send_coords(0, 0);
-        // V1 Y | X
-        send_coords(600, 900);
-        // V2 Z
-        send_coords(-0, 0);
-        // V2 Y | X
-        send_coords(-300, -200);
-        // V3 Z
-        send_coords(0, 0);
-        // V3 Y | X
-        send_coords(800, -1000);
+        angle_x += x_increment;
+        angle_y += y_increment;
+        angle_z += z_increment;
 
         matrix::rotate_y(MAT3, angle_z);
 
@@ -95,7 +88,7 @@ pub fn main() -> ! {
         // M2 = Rotation * Scaling
         matrix::multiply(MAT2, MAT3, MAT2);
 
-        matrix::translate(MAT3, 0.into(), 0.into(), (-100).into());
+        matrix::translate(MAT3, 0.into(), 0.into(), (-200).into());
 
         // M2 = Translation * Rotation * Scaling
         matrix::multiply(MAT2, MAT3, MAT2);
@@ -105,11 +98,11 @@ pub fn main() -> ! {
 
         matrix::set_draw_matrix(MAT0);
 
-        for y in 0..18 {
-            for x in 0..18 {
+        for y in 0..3 {
+            for x in 0..3 {
                 // Gouraud octahedron
                 let (vertices, indices) =
-                    build_octahedron_strip([(9 - x) * 50, (9 - y) * 50, y * x + x * x].into(), 100);
+                    build_octahedron([(9 - x) * 50, (9 - y) * 50, 2000].into(), 100);
 
                 for chunk in indices.chunks(3) {
                     if let &[a, b, c] = chunk {
@@ -152,14 +145,14 @@ fn sub_task() -> ! {
 
 // Constructs a regular octahedron centered on `c` and with all vertices at a distance `r` from the
 // `c`. Returns the 10 vertices and the indices to build the 8 triangles
-fn build_octahedron_strip(c: Vec3<i16>, r: i16) -> ([Vec3<i16>; 6], [u8; 3 * 8]) {
+fn build_octahedron(c: Vec3<i16>, r: i16) -> ([Vec3<i16>; 6], [u8; 3 * 8]) {
     let vertices = [
-        c + [0, r, 0],  // 0 +y
-        c + [0, -r, 0], // 1 -y
-        c + [r, 0, 0],  // 2 +x
-        c + [-r, 0, 0], // 3 -x
-        c + [0, 0, r],  // 4 +z
-        c + [0, 0, -r], // 5 -z
+        c + [0, r, 0],
+        c + [0, -r, 0],
+        c + [r, 0, 0],
+        c + [-r, 0, 0],
+        c + [0, 0, r],
+        c + [0, 0, -r],
     ];
 
     let indices = [
