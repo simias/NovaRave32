@@ -36,37 +36,17 @@ pub fn main() -> ! {
         // Start draw
         send_to_gpu(0x01 << 24);
 
-        matrix::rotate_y(MAT3, angle_z);
-
-        matrix::rotate_z(MAT2, angle_y);
-        matrix::multiply(MAT3, MAT3, MAT2);
-
-        matrix::rotate_x(MAT2, angle_x);
-        matrix::multiply(MAT3, MAT3, MAT2);
-
-        // Build scaling matrix in MAT2
-        matrix::scale(MAT2, 0.01.into(), 0.01.into(), 0.01.into());
-
-        // M2 = Rotation * Scaling
-        matrix::multiply(MAT2, MAT3, MAT2);
-
-        matrix::translate(MAT3, 0.into(), 0.into(), (-300).into());
-
-        // M2 = Translation * Rotation * Scaling
-        matrix::multiply(MAT2, MAT3, MAT2);
+        matrix::rotate_y(MAT3, angle_y);
+        matrix::translate(MAT2, 0.into(), 0.into(), (-50).into());
+        matrix::multiply(MAT2, MAT2, MAT3);
 
         // M0 = Camera * Object
         matrix::multiply(MAT0, MAT1, MAT2);
 
         matrix::set_draw_matrix(MAT0);
 
-        let mut start = false;
         for b in ship.chunks_exact(4) {
             let w = u32::from_le_bytes([b[0], b[1], b[2], b[3]]);
-            if !start && w != 0 {
-                continue;
-            }
-            start = true;
             send_to_gpu(w);
         }
 

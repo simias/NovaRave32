@@ -107,7 +107,13 @@ impl Model {
             let h = bbmax[1] - bbmin[1];
             let d = bbmax[2] - bbmin[2];
 
-            [bbmin[0] + w / 2., bbmin[1] + h / 2., bbmin[2] + d / 2.]
+            let c = [bbmin[0] + w / 2., bbmin[1] + h / 2., bbmin[2] + d / 2.];
+
+            [
+                to_fp32_compatible(c[0]),
+                to_fp32_compatible(c[1]),
+                to_fp32_compatible(c[2]),
+            ]
         } else {
             // Keep origin where it is
             [0.; 3]
@@ -161,13 +167,13 @@ impl Model {
                 s
             }
             None => {
-                if scale_max > 1. {
-                    // To avoid fixed point rounding issues when attempting to scale down, we
-                    // prefer power of two
-                    2.0f32.powf(scale_max.log2().floor())
-                } else {
-                    scale_max
-                }
+                // Make sure the scale can be accurately represented in the scaling matrix (where
+                // we'll store 1/scale)
+                //
+                // The small offset is to make sure that to_fp32_compatible will not round iscale
+                // down, which would result in vertex clipping
+                let iscale = to_fp32_compatible(1. / scale_max + (0.5 / 65536.));
+                1. / iscale
             }
         };
 
@@ -316,92 +322,64 @@ impl Model {
             (v * self.scale).round().clamp(min, max) as i32
         };
 
-        let scale_coords =
-            |c: [f32; 3]| -> [i32; 3] { [scale_f32(c[0]), scale_f32(c[1]), scale_f32(c[2])] };
+        let scale_coords = |c: [f32; 3]| -> [i32; 3] {
+            [
+                scale_f32(c[0] - self.origin[0]),
+                scale_f32(c[1] - self.origin[1]),
+                scale_f32(c[2] - self.origin[2]),
+            ]
+        };
 
         // File format identifier (NOP GPU command)
         //
         // bits [16:24] could be used for flags later
         wu32(w, 0x0000524e)?;
 
-        let origin = scale_coords(self.origin);
-
-        let needs_translation = origin.iter().any(|&c| c != 0);
-
-        if needs_translation {
-            // Add translation matrix in M3 to put the center where it should be
+        // Matrix header
+        {
+            // Put model matrix in M3
             let m = 3;
 
             // Matrix identity
             wu32(w, (0x10 << 24) | (m << 12))?;
 
-            for (row, &t) in origin.iter().enumerate() {
-                if t != 0 {
+            // Translation factor
+            for (row, &t) in self.origin.iter().enumerate() {
+                let fpt = (t * 65536.).round().clamp(i32::MIN as f32, i32::MAX as f32) as i32;
+
+                if fpt != 0 {
                     wu32(
                         w,
                         (0x10 << 24) | (1 << 16) | (m << 12) | (3 << 4) | (row as u32),
                     )?;
-                    wu32(w, t as u32)?;
+
+                    wu32(w, fpt as u32)?;
                 }
             }
-        }
 
-        let needs_scaling = self.scale != 1.0;
-
-        if needs_scaling {
-            // Add scaling matrix in M2
-            let m = 2;
-
-            let sscale = ((1. / self.scale) * 65536.).round() as u32;
-
-            // Matrix identity
-            wu32(w, (0x10 << 24) | (m << 12))?;
-
-            for p in 0..3 {
-                wu32(w, (0x10 << 24) | (1 << 16) | (m << 12) | (p << 4) | p)?;
-                wu32(w, sscale.max(1))?;
+            // Scaling factor
+            let iscale = (65536. / self.scale)
+                .abs()
+                .round()
+                .clamp(1., i32::MAX as f32) as u32;
+            if iscale != 1 {
+                for p in 0..3 {
+                    wu32(w, (0x10 << 24) | (1 << 16) | (m << 12) | (p << 4) | p)?;
+                    wu32(w, iscale)?;
+                }
             }
-        } else {
-            // Initialize an identity matrix in M2 so that we can still put the perspective matrix in M0
-            let m = 2;
-            wu32(w, (0x10 << 24) | (m << 12))?;
-        }
 
-        if needs_scaling && needs_translation {
-            // M2 = M2 * M3
-            let mo = 2;
-            let ma = 2;
+            // M0 = M0 * M3
+            let mo = 0;
+            let ma = 0;
             let mb = 3;
-
-            wu32(w, (0x10 << 24) | (0x02 << 16) | (mo << 12) | (ma << 4) | mb)?;
-
-            // M0 = M1 * M2
-            let mo = 0;
-            let ma = 1;
-            let mb = 2;
-
-            wu32(w, (0x10 << 24) | (0x02 << 16) | (mo << 12) | (ma << 4) | mb)?;
-        } else if needs_translation {
-            // M0 = M1 * M3
-            let mo = 0;
-            let ma = 1;
-            let mb = 3;
-
-            wu32(w, (0x10 << 24) | (0x02 << 16) | (mo << 12) | (ma << 4) | mb)?;
-        } else {
-            // M0 = M1 * M2
-            //
-            // If there's no scaling then the code above will have put an identity matrix in M2
-            let mo = 0;
-            let ma = 1;
-            let mb = 2;
 
             wu32(w, (0x10 << 24) | (0x02 << 16) | (mo << 12) | (ma << 4) | mb)?;
         }
 
         // Add an empty word (NOP for the GPU) to delineate the start of the vertex data. This way
         // we can easily skip the matrix setup if we don't need it later
-        wu32(w, 0x0000_0000)?;
+        wu32(w, 0x0000_0042)?;
 
         let mut clip_count = 0;
 
@@ -446,19 +424,21 @@ impl Model {
                     let c1 = bgr888(v1.col);
                     let c2 = bgr888(v2.col);
 
-                    let needs_gouraud = c0 == c1 && c0 == c2;
+                    let needs_gouraud = c0 != c1 || c0 != c2;
 
                     let blend_mode = if needs_gouraud { 2 } else { 0 };
-
-                    let cmd = (0x40 << 24) | (blend_mode << 25) | c0;
-                    wu32(w, cmd)?;
 
                     let p0 = scale_coords(v0.pos);
                     let p1 = scale_coords(v1.pos);
                     let p2 = scale_coords(v2.pos);
 
                     let is_clipped = |&coord: &i32| -> bool {
-                        coord < i32::from(INT_COORDS_MIN) || coord > i32::from(INT_COORDS_MAX)
+                        if coord < i32::from(INT_COORDS_MIN) || coord > i32::from(INT_COORDS_MAX) {
+                            error!("clip {}", coord);
+                            true
+                        } else {
+                            false
+                        }
                     };
 
                     if p0.iter().any(is_clipped)
@@ -468,6 +448,9 @@ impl Model {
                         clip_count += 1;
                         continue;
                     }
+
+                    let cmd = (0x40 << 24) | (blend_mode << 25) | c0;
+                    wu32(w, cmd)?;
 
                     let xyz = |w: &mut W, pos: [i32; 3]| {
                         w.write_i16::<LittleEndian>(pos[2] as i16)?;
@@ -571,6 +554,16 @@ impl Vertex {
     fn set_emissive(&mut self, emissive: bool) {
         self.emissive = emissive;
     }
+}
+
+/// Takes an f32 and returns the closest value that can be accurately represented in signed 16.16
+/// fixed point
+fn to_fp32_compatible(v: f32) -> f32 {
+    let fp = (v * 65536.).round();
+
+    let fp = fp.clamp(i32::MIN as f32, i32::MAX as f32);
+
+    fp / 65536.
 }
 
 /// The max value we can represent in an NR3D coordinate
