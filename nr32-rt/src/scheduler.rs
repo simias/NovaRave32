@@ -52,7 +52,7 @@ impl Scheduler {
             ra: _task_runner as usize,
             state: TaskState::Running,
             prio,
-            stack: stack,
+            stack,
         };
 
         for t in self.tasks.iter_mut() {
