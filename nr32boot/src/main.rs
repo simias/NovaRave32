@@ -108,10 +108,14 @@ fn handle_ecall() {
         }
         syscalls::SYS_WAIT_EVENT => sched.wait_event_current_task(arg0),
         syscalls::SYS_SPAWN_TASK => {
-            let f = unsafe { core::mem::transmute::<usize, fn() -> !>(arg0) };
+            let f = unsafe { core::mem::transmute::<usize, fn()>(arg0) };
             let prio = arg1 as i32;
 
             sched.spawn_task(f, prio, TASK_STACK_SIZE);
+            0
+        }
+        syscalls::SYS_EXIT => {
+            sched.exit_current_task();
             0
         }
         _ => panic!("Unknown syscall 0x{:02x}", code),

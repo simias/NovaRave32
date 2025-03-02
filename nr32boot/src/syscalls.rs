@@ -16,7 +16,7 @@ pub fn wait_for_vsync() {
     syscall(SYS_WAIT_EVENT, events::EV_VSYNC, 0);
 }
 
-pub fn spawn_task(f: fn() -> !, prio: i32) {
+pub fn spawn_task(f: fn(), prio: i32) {
     syscall(SYS_SPAWN_TASK, f as usize, prio as usize);
 }
 
@@ -38,6 +38,8 @@ pub const SYS_SLEEP: usize = 0x01;
 pub const SYS_WAIT_EVENT: usize = 0x02;
 /// Spawn a thread with entry function in a0 and prio in a'
 pub const SYS_SPAWN_TASK: usize = 0x03;
+/// Kills the current thread
+pub const SYS_EXIT: usize = 0x04;
 
 pub mod events {
     pub const EV_VSYNC: usize = 1;

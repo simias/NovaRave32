@@ -4,7 +4,7 @@ use core::ops::{Add, AddAssign, Div, Sub, SubAssign};
 
 /// Angle represented as an u16. One full turn is represented over the full 16bit range, meaning
 /// that we have a precision of 360 / (2**16) -> 0.0055°
-#[derive(Copy, Clone, PartialEq, Eq, Debug)]
+#[derive(Copy, Clone, PartialEq, Eq, Debug, PartialOrd, Ord)]
 pub struct Angle(u16);
 
 impl Angle {

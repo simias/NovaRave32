@@ -118,6 +118,7 @@ _trap_handler:
     sw      x30, (3 * 4)(sp)
     sw      x31, (2 * 4)(sp)
 
+    /* Swap system stack in */
     csrrw   sp, mscratch, sp
 
     jal     _system_trap
@@ -177,7 +178,6 @@ global_asm!(
     .global _idle_task
 _idle_task:
     .cfi_startproc
-    .cfi_undefined ra
 
 1:
     wfi
@@ -187,6 +187,25 @@ _idle_task:
     "
 );
 
+// Trampoline when spawning a task that takes care of calling SYS_EXIT once it returns
+//
+// The task start address is in a0
+global_asm!(
+    ".section .text, \"ax\"
+    .global _task_runner
+_task_runner:
+    .cfi_startproc
+    .cfi_undefined ra
+
+    jalr    a0
+    li      a7, 0x04
+    ecall
+
+    .cfi_endproc
+    "
+);
+
 extern "C" {
-    pub fn _idle_task() -> !;
+    pub fn _idle_task();
+    pub fn _task_runner() -> !;
 }

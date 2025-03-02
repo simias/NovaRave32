@@ -1,4 +1,7 @@
-use crate::{asm::_idle_task, syscalls, MTIME_HZ};
+use crate::{
+    asm::{_idle_task, _task_runner},
+    syscalls, MTIME_HZ,
+};
 use alloc::{boxed::Box, vec, vec::Vec};
 use spin::{Mutex, MutexGuard};
 
@@ -28,23 +31,51 @@ impl Scheduler {
         self.tasks = Vec::with_capacity(4);
 
         // Create the idle task.
-        let idle_task = unsafe { core::mem::transmute::<usize, fn() -> !>(_idle_task as usize) };
-        self.spawn_task(idle_task, i32::MIN, BANKED_REGISTER_LEN);
+        let idle_task = unsafe { core::mem::transmute::<usize, fn()>(_idle_task as usize) };
+        self.spawn_task(idle_task, i32::MIN, 0);
         self.switch_to_task(0);
     }
 
-    pub fn spawn_task(&mut self, f: fn() -> !, prio: i32, stack_size: usize) {
-        let (stack, sp) = stack_alloc(stack_size);
+    pub fn spawn_task(&mut self, f: fn(), prio: i32, stack_size: usize) {
+        let (stack, sp) = stack_alloc(stack_size + BANKED_REGISTER_LEN);
+        let f = f as usize;
+        // Put function in banked a0
+        unsafe {
+            let p = sp - BANKED_REGISTER_LEN + 23 * 4;
 
-        let t = Task {
-            sp: sp - BANKED_REGISTER_LEN,
-            ra: f as usize,
-            state: TaskState::Running,
-            prio,
-            _stack: stack,
+            let p = p as *mut usize;
+
+            *p = f;
         };
 
-        self.tasks.push(t);
+        let new_task = Task {
+            sp: sp - BANKED_REGISTER_LEN,
+            ra: _task_runner as usize,
+            state: TaskState::Running,
+            prio,
+            stack: stack,
+        };
+
+        for t in self.tasks.iter_mut() {
+            if matches!(t.state, TaskState::Dead) {
+                *t = new_task;
+                return;
+            }
+        }
+
+        // No dead task, create a new one
+        self.tasks.push(new_task);
+    }
+
+    pub fn exit_current_task(&mut self) {
+        assert_ne!(self.cur_task, 0, "Attempted to kill the idle task!");
+
+        let t = &mut self.tasks[self.cur_task];
+        t.state = TaskState::Dead;
+        t.prio = i32::MIN;
+        t.stack = Box::new([]);
+
+        self.schedule()
     }
 
     pub fn schedule(&mut self) {
@@ -217,7 +248,7 @@ struct Task {
     sp: usize,
     /// Task priority (higher values means higher priority)
     prio: i32,
-    _stack: Box<[StackWord]>,
+    stack: Box<[StackWord]>,
 }
 
 impl Task {
@@ -228,6 +259,7 @@ impl Task {
 
 #[derive(Copy, Clone)]
 enum TaskState {
+    Dead,
     Running,
     Sleeping {
         /// MTIME value

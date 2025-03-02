@@ -9,7 +9,7 @@ use crate::math::{
 use crate::syscalls::{sleep, spawn_task, wait_for_vsync};
 use core::time::Duration;
 
-pub fn main() -> ! {
+pub fn main() {
     info!("Task is running!");
 
     spawn_task(sub_task, 1);
@@ -38,25 +38,24 @@ pub fn main() -> ! {
     );
 
     let mut angle_y = Angle::from_degrees(0.into());
-    let mut angle_z = Angle::from_degrees(0.into());
     let y_increment = Angle::from_degrees((0.5).into());
-    let z_increment = Angle::from_degrees((0.1).into());
 
     let ship = include_bytes!("assets/ship.nr3d");
     let beach = include_bytes!("assets/beach.nr3d");
 
     loop {
         angle_y += y_increment;
-        angle_z += z_increment;
+
         // Start draw
         send_to_gpu(0x01 << 24);
 
         matrix::translate(m_mat, 0.into(), (0).into(), (-50).into());
-        matrix::rotate_x(MAT6, Angle::from_degrees(15.into()));
+        matrix::rotate_x(MAT6, Angle::from_degrees(5.into()));
         matrix::multiply(m_mat, m_mat, MAT6);
         matrix::rotate_y(MAT7, angle_y);
         matrix::multiply(m_mat, m_mat, MAT7);
-        matrix::rotate_z(MAT7, angle_z);
+        matrix::rotate_z(MAT7, angle_y);
+
         matrix::multiply(m_mat, m_mat, MAT7);
         matrix::scale(MAT7, 1.1.into(), 1.1.into(), 1.1.into());
         matrix::multiply(m_mat, m_mat, MAT7);
@@ -68,8 +67,7 @@ pub fn main() -> ! {
 
         // Build octahedron
         {
-            let (vertices, indices) =
-                build_octahedron([30, 10, 10].into(), 3);
+            let (vertices, indices) = build_octahedron([30, 10, 10].into(), 3);
 
             for chunk in indices.chunks(3) {
                 if let &[a, b, c] = chunk {
@@ -110,13 +108,20 @@ fn send_model(model: &[u8]) {
     }
 }
 
-fn sub_task() -> ! {
+fn sub_task() {
     info!("Sub-task launched");
     loop {
         info!("Sub-task sleeping 3s..");
         sleep(Duration::from_secs(3));
         info!("Sub-task done sleeping");
+        spawn_task(one_shot_task, -1);
     }
+}
+
+fn one_shot_task() {
+    info!("One-shot-task launched");
+    sleep(Duration::from_secs(1));
+    info!("One-shot-task ended");
 }
 
 // Constructs a regular octahedron centered on `c` and with all vertices at a distance `r` from the
