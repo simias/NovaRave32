@@ -114,9 +114,9 @@ async function start() {
 
     switch_to_vbo();
 
-    // setInterval(() => {
+    setInterval(() => {
         nora32.run_frame();
-    // }, 1000);
+    }, 1000 / 30);
 }
 
 function switch_to_vbo() {
@@ -289,7 +289,10 @@ out vec4 fragColor;
 uniform sampler2D uTexture;
 
 void main() {
-    fragColor = texture(uTexture, vTexCoord);
+    vec3 color = texture(uTexture, vTexCoord).rgb;
+
+    float gamma = 1. / 2.2;
+    fragColor = vec4(pow(color, vec3(gamma)), 1.0);
 }`;
 
 start();

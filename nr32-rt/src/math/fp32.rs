@@ -77,7 +77,8 @@ impl Fp32 {
             Fp32(self.0 << (frac_zeroes / 2))
         };
 
-        for _ in 0..3 {
+        // A few rounds of Newton's method to improve the accuracy
+        for _ in 0..4 {
             s = (s.saturating_add(self / s)) / 2;
         }
 

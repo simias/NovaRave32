@@ -1,4 +1,4 @@
-use super::{Angle, Fp32};
+use super::{Angle, Fp32, Vec3};
 
 use crate::gpu::send_to_gpu;
 
@@ -53,6 +53,11 @@ pub fn perspective(m: Matrix, fovy: Angle, aspect_ratio: Fp32, near: Fp32, far: 
     set_matrix_component(m, 2, 2, mat_2_2);
     set_matrix_component(m, 3, 2, mat_3_2);
     set_matrix_component(m, 2, 3, mat_2_3);
+}
+
+/// Configure `m` to hold the given "look-at" matrix. `up` will usually be `[ 0, 1, 0]`.
+pub fn loot_at(m: Matrix, eye_pos: Vec3<Fp32>, target_pos: Vec3<Fp32>, up: Vec3<Fp32>) {
+    todo!()
 }
 
 /// Configure `m` to hold the given translation matrix
