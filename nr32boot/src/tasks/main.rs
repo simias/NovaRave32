@@ -3,7 +3,7 @@
 use crate::gpu::send_to_gpu;
 use crate::math::{
     matrix,
-    matrix::{MAT0, MAT1, MAT2, MAT3},
+    matrix::{MAT0, MAT1, MAT2, MAT3, MAT4, MAT5, MAT6, MAT7},
     Angle, Fp32, Vec3,
 };
 use crate::syscalls::{sleep, spawn_task, wait_for_vsync};
@@ -14,95 +14,84 @@ pub fn main() -> ! {
 
     spawn_task(sub_task, 1);
 
-    // MAT1: Camera matrix
+    // MAT0: Draw matrix
+    // MAT1: MVP matrix
+    // MAT2: Projection matrix
+    // MAT3: View matrix
+    // MAT4: Model matrix
+    // MAT5: Normal matrix
+    // MAT6: Custom
+    // MAT7: multitool model loading
+    let draw_mat = MAT0;
+    let mvp_mat = MAT1;
+    let p_mat = MAT2;
+    let _v_mat = MAT3;
+    let m_mat = MAT4;
+    let _n_mat = MAT5;
+
     matrix::perspective(
-        MAT1,
+        p_mat,
         Angle::from_degrees(80.into()),
         Fp32::ratio(640, 480),
-        1.into(),
+        10.into(),
         1000.into(),
     );
 
-    let mut angle_x = Angle::from_degrees(0.into());
     let mut angle_y = Angle::from_degrees(0.into());
     let mut angle_z = Angle::from_degrees(0.into());
-    let x_increment = Angle::from_degrees((0.1).into());
-    let y_increment = Angle::from_degrees((-1).into());
-    let z_increment = Angle::from_degrees((1).into());
+    let y_increment = Angle::from_degrees((0.5).into());
+    let z_increment = Angle::from_degrees((0.1).into());
 
     let ship = include_bytes!("assets/ship.nr3d");
+    let beach = include_bytes!("assets/beach.nr3d");
 
     loop {
+        angle_y += y_increment;
+        angle_z += z_increment;
         // Start draw
         send_to_gpu(0x01 << 24);
 
-        matrix::rotate_y(MAT3, angle_y);
-        matrix::translate(MAT2, 0.into(), 0.into(), (-50).into());
-        matrix::multiply(MAT2, MAT2, MAT3);
+        matrix::translate(m_mat, 0.into(), (0).into(), (-50).into());
+        matrix::rotate_x(MAT6, Angle::from_degrees(15.into()));
+        matrix::multiply(m_mat, m_mat, MAT6);
+        matrix::rotate_y(MAT7, angle_y);
+        matrix::multiply(m_mat, m_mat, MAT7);
+        matrix::rotate_z(MAT7, angle_z);
+        matrix::multiply(m_mat, m_mat, MAT7);
+        matrix::scale(MAT7, 1.1.into(), 1.1.into(), 1.1.into());
+        matrix::multiply(m_mat, m_mat, MAT7);
 
-        // M0 = Camera * Object
-        matrix::multiply(MAT0, MAT1, MAT2);
+        matrix::multiply(mvp_mat, p_mat, m_mat);
+        matrix::multiply(draw_mat, p_mat, m_mat);
 
-        matrix::set_draw_matrix(MAT0);
+        matrix::set_draw_matrix(draw_mat);
 
-        for b in ship.chunks_exact(4) {
-            let w = u32::from_le_bytes([b[0], b[1], b[2], b[3]]);
-            send_to_gpu(w);
-        }
+        // Build octahedron
+        {
+            let (vertices, indices) =
+                build_octahedron([30, 10, 10].into(), 3);
 
-        angle_x += x_increment;
-        angle_y += y_increment;
-        angle_z += z_increment;
+            for chunk in indices.chunks(3) {
+                if let &[a, b, c] = chunk {
+                    let va = vertices[usize::from(a)];
+                    let vb = vertices[usize::from(b)];
+                    let vc = vertices[usize::from(c)];
 
-        matrix::rotate_y(MAT3, angle_z);
-
-        matrix::rotate_z(MAT2, angle_y);
-        matrix::multiply(MAT3, MAT3, MAT2);
-
-        matrix::rotate_x(MAT2, angle_x);
-        matrix::multiply(MAT3, MAT3, MAT2);
-
-        // Build scaling matrix in MAT2
-        matrix::scale(MAT2, 0.1.into(), 0.2.into(), 0.1.into());
-
-        // M2 = Rotation * Scaling
-        matrix::multiply(MAT2, MAT3, MAT2);
-
-        matrix::translate(MAT3, 0.into(), 0.into(), (-200).into());
-
-        // M2 = Translation * Rotation * Scaling
-        matrix::multiply(MAT2, MAT3, MAT2);
-
-        // M0 = Camera * Object
-        matrix::multiply(MAT0, MAT1, MAT2);
-
-        matrix::set_draw_matrix(MAT0);
-
-        for y in 0..3 {
-            for x in 0..3 {
-                // Gouraud octahedron
-                let (vertices, indices) =
-                    build_octahedron([(9 - x) * 50, (9 - y) * 50, 2000].into(), 100);
-
-                for chunk in indices.chunks(3) {
-                    if let &[a, b, c] = chunk {
-                        let va = vertices[usize::from(a)];
-                        let vb = vertices[usize::from(b)];
-                        let vc = vertices[usize::from(c)];
-
-                        send_to_gpu((0x40 << 24) | (2 << 25) | (0x0001ff << (a * 3)));
-                        send_coords(va.z(), 0);
-                        send_coords(va.x(), va.y());
-                        send_to_gpu(0x0001ff << (b * 3));
-                        send_coords(vb.z(), 0);
-                        send_coords(vb.x(), vb.y());
-                        send_to_gpu(0x0001ff << (c * 3));
-                        send_coords(vc.z(), 0);
-                        send_coords(vc.x(), vc.y());
-                    }
+                    send_to_gpu((0x40 << 24) | (2 << 25) | (0x0001ff << (a * 3)));
+                    send_coords(va.z(), 0);
+                    send_coords(va.x(), va.y());
+                    send_to_gpu(0x0001ff << (b * 3));
+                    send_coords(vb.z(), 0);
+                    send_coords(vb.x(), vb.y());
+                    send_to_gpu(0x0001ff << (c * 3));
+                    send_coords(vc.z(), 0);
+                    send_coords(vc.x(), vc.y());
                 }
             }
         }
+
+        send_model(ship);
+        send_model(beach);
 
         // End draw
         send_to_gpu(0x02 << 24);
@@ -112,6 +101,13 @@ pub fn main() -> ! {
 
 fn send_coords(a: i16, b: i16) {
     send_to_gpu(((b as u16 as u32) << 16) | (a as u16 as u32));
+}
+
+fn send_model(model: &[u8]) {
+    for b in model.chunks_exact(4) {
+        let w = u32::from_le_bytes([b[0], b[1], b[2], b[3]]);
+        send_to_gpu(w);
+    }
 }
 
 fn sub_task() -> ! {

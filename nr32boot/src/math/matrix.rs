@@ -10,25 +10,29 @@ pub const MAT0: Matrix = Matrix(0);
 pub const MAT1: Matrix = Matrix(1);
 pub const MAT2: Matrix = Matrix(2);
 pub const MAT3: Matrix = Matrix(3);
+pub const MAT4: Matrix = Matrix(4);
+pub const MAT5: Matrix = Matrix(5);
+pub const MAT6: Matrix = Matrix(6);
+pub const MAT7: Matrix = Matrix(7);
 
 /// Tell the GPU to use `m` to transform the vertices while drawing
 pub fn set_draw_matrix(m: Matrix) {
-    let m_select = u32::from(m.0 & 3);
+    let m_select = u32::from(m.0 & 7);
     send_to_gpu((0x03 << 24) | (1 << 16) | m_select);
 }
 
 /// Reset matrix to identity
 pub fn identity(m: Matrix) {
-    let m_select = u32::from(m.0 & 3) << 12;
+    let m_select = u32::from(m.0 & 7) << 12;
 
     send_to_gpu((0x10 << 24) | m_select);
 }
 
 /// Calculate `ma` x `mx` and put the result in `mout`
 pub fn multiply(mout: Matrix, ma: Matrix, mb: Matrix) {
-    let m_select = u32::from(mout.0 & 3) << 12;
-    let ma = u32::from(ma.0 & 3) << 4;
-    let mb = u32::from(mb.0 & 3);
+    let m_select = u32::from(mout.0 & 7) << 12;
+    let ma = u32::from(ma.0 & 7) << 4;
+    let mb = u32::from(mb.0 & 7);
 
     send_to_gpu((0x10 << 24) | (0x02 << 16) | m_select | ma | mb);
 }
@@ -104,7 +108,7 @@ pub fn rotate_z(m: Matrix, angle: Angle) {
 }
 
 pub fn set_matrix_component(m: Matrix, i: u8, j: u8, v: Fp32) {
-    let m_select = u32::from(m.0 & 3) << 12;
+    let m_select = u32::from(m.0 & 7) << 12;
     let i = u32::from(i & 3);
     let j = u32::from(j & 3);
 

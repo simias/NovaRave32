@@ -216,8 +216,12 @@ impl Model {
             debug!("Material color: {:?}", default_color);
 
             // XXX We could use "emissive_strength" instead but Blender 4.3.2 doesn't seem to
-            // export it. As a workaround I just see if a non-black emissive factor is used.
-            let is_emissive = mat.emissive_factor().iter().sum::<f32>() > 0.01;
+            // export it. As a workaround I just see if a non-black and non-white emissive factor is used.
+            let is_emissive = {
+                let v = mat.emissive_factor().iter().sum::<f32>();
+
+                v > 0.1 && v < 2.9
+            };
 
             if is_emissive {
                 debug!("Material is emissive");
@@ -337,8 +341,8 @@ impl Model {
 
         // Matrix header
         {
-            // Put model matrix in M3
-            let m = 3;
+            // Put model matrix in M7
+            let m = 7;
 
             // Matrix identity
             wu32(w, (0x10 << 24) | (m << 12))?;
@@ -369,10 +373,10 @@ impl Model {
                 }
             }
 
-            // M0 = M0 * M3
+            // M0 = M1 * M7
             let mo = 0;
-            let ma = 0;
-            let mb = 3;
+            let ma = 1;
+            let mb = 7;
 
             wu32(w, (0x10 << 24) | (0x02 << 16) | (mo << 12) | (ma << 4) | mb)?;
         }

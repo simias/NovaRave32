@@ -8,7 +8,7 @@ pub struct Gpu {
     /// State of the rasterizer
     raster_state: RasterState,
     /// Matrices
-    mat: [Mat4; 4],
+    mat: [Mat4; 8],
     /// Currently buffered vertices for triangle draw commands
     vertices: [Vertex; 3],
     /// Matrix used for perspective transform of vertices
@@ -22,7 +22,7 @@ pub struct Gpu {
     /// 4x4 f32 per matrix
     matrices_f32: Vec<[[f32; 4]; 4]>,
     /// Index of every Gpu.mat in matrices_f32 (if any).
-    matrix_lut: [Option<u8>; 4],
+    matrix_lut: [Option<u8>; 8],
     /// UNSIGNED_BYTE vertex attributes for OpenGL:
     ///
     /// [0]: R
@@ -40,13 +40,13 @@ impl Gpu {
         Gpu {
             command_state: CommandState::Idle,
             raster_state: RasterState::Idle,
-            mat: [Mat4::IDENTITY; 4],
+            mat: [Mat4::IDENTITY; 8],
             vertices: [Vertex::new(); 3],
             draw_mat: 0,
             attribs_i16: Vec::new(),
             attribs_u8: Vec::new(),
             matrices_f32: Vec::new(),
-            matrix_lut: [None; 4],
+            matrix_lut: [None; 8],
             frame_cycles: FRAME_CYCLES_30FPS,
         }
     }
@@ -201,7 +201,7 @@ fn do_draw(m: &mut NoRa32) {
     m.gpu.attribs_i16.clear();
     m.gpu.attribs_u8.clear();
     m.gpu.matrices_f32.clear();
-    m.gpu.matrix_lut = [None; 4];
+    m.gpu.matrix_lut = [None; 8];
 }
 
 fn handle_new_command(m: &mut NoRa32, cmd: u32) -> CommandState {
@@ -236,7 +236,7 @@ fn handle_new_command(m: &mut NoRa32, cmd: u32) -> CommandState {
         }
         // Matrix
         0x10 => {
-            let mindex = ((cmd >> 12) & 0x3) as usize;
+            let mindex = ((cmd >> 12) & 7) as usize;
 
             match (cmd >> 16) & 0xff {
                 // Reset matrix to identity
@@ -252,8 +252,8 @@ fn handle_new_command(m: &mut NoRa32, cmd: u32) -> CommandState {
                 },
                 // Multiply
                 0x02 => {
-                    let maindex = ((cmd >> 4) & 3) as usize;
-                    let mbindex = (cmd & 3) as usize;
+                    let maindex = ((cmd >> 4) & 0x7) as usize;
+                    let mbindex = (cmd & 0x7) as usize;
 
                     m.gpu.mat[mindex] = m.gpu.mat[maindex] * m.gpu.mat[mbindex];
 
