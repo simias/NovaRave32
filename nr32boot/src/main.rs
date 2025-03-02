@@ -33,7 +33,7 @@ pub fn rust_start() {
     let mut sched = scheduler::get();
     sched.start();
     sched.spawn_task(tasks::main_task, 0, TASK_STACK_SIZE);
-    sched.preempt_current_task();
+    sched.schedule();
 }
 
 /// Called for trap handling
@@ -45,7 +45,7 @@ pub fn rust_trap() {
         // MTIME interrupt
         (true, 7) => {
             let mut sched = scheduler::get();
-            sched.preempt_current_task();
+            sched.schedule();
         }
         // External interrupt
         (true, 11) => handle_irqs(),

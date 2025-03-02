@@ -47,7 +47,7 @@ impl Scheduler {
         self.tasks.push(t);
     }
 
-    pub fn preempt_current_task(&mut self) {
+    pub fn schedule(&mut self) {
         {
             // Start by saving the state of the current task
             let t = &mut self.tasks[self.cur_task];
@@ -154,7 +154,7 @@ impl Scheduler {
         }
 
         if task_awoken {
-            self.preempt_current_task();
+            self.schedule();
         }
     }
 
@@ -169,7 +169,7 @@ impl Scheduler {
             };
         }
 
-        self.preempt_current_task();
+        self.schedule();
     }
 
     pub fn wait_event_current_task(&mut self, ev: usize) -> usize {
@@ -183,7 +183,7 @@ impl Scheduler {
             }
         };
 
-        self.preempt_current_task();
+        self.schedule();
 
         0
     }
