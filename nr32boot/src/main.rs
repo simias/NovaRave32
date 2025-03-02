@@ -48,6 +48,35 @@ pub fn main() {
     let ship = include_bytes!("assets/ship.nr3d");
     let beach = include_bytes!("assets/beach.nr3d");
 
+    for x in [
+        1.0f32,
+        2.,
+        100.,
+        1000.,
+        1024.,
+        i16::MAX as f32,
+        1. / 65536.,
+        0.9,
+        0.99,
+        0.5,
+        0.0625,
+        0.015625,
+        0.25,
+        0.125,
+        0.1,
+        0.01,
+        0.02,
+        0.128,
+        0.001,
+        0.,
+        -10.,
+    ] {
+        let x: Fp32 = x.into();
+
+        let s = x.sqrt();
+        info!("sqrt({}) = {} [-> {}]", x, s, s * s);
+    }
+
     loop {
         angle_y += y_increment;
 

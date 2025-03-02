@@ -198,4 +198,4 @@ const IRQ_PENDING: *mut usize = 0xffff_ffe0 as *mut usize;
 /// External Interrupt Controller: IRQ enabled register
 const IRQ_ENABLED: *mut usize = 0xffff_ffe4 as *mut usize;
 
-const TASK_STACK_SIZE: usize = 2048;
+const TASK_STACK_SIZE: usize = 4096 - 128;

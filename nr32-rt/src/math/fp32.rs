@@ -7,10 +7,12 @@ pub struct Fp32(i32);
 
 impl Fp32 {
     pub const MAX: Fp32 = Fp32(i32::MAX);
+    pub const MIN: Fp32 = Fp32(i32::MIN);
+    pub const FP_1: Fp32 = Fp32(1 << Fp32::FP_SHIFT);
 
     /// We use s16.16 fixed point
     const FP_SHIFT: u32 = 16;
-    const F32_MUL: f32 = (1 << Fp32::FP_SHIFT) as f32;
+    const F32_MUL: f32 = (1u32 << Fp32::FP_SHIFT) as f32;
 
     pub const fn ratio(a: i32, b: i32) -> Fp32 {
         Fp32((a << Self::FP_SHIFT) / b)
@@ -49,6 +51,37 @@ impl Fp32 {
         } else {
             abs.neg()
         }
+    }
+
+    pub const fn saturating_add(self, rhs: Fp32) -> Fp32 {
+        Fp32(self.0.saturating_add(rhs.0))
+    }
+
+    /// Approximate square root using log2 and Newton's method
+    pub fn sqrt(self) -> Fp32 {
+        if self.0 == 0 {
+            return self;
+        }
+
+        if self.0 < 0 {
+            // Return a bogus value
+            return Fp32::MIN;
+        }
+
+        // First rough estimate using powers of two.
+        let mut s = if self >= Fp32::FP_1 {
+            let int_zeroes = 16 - self.0.leading_zeros();
+            Fp32(self.0 >> (int_zeroes / 2))
+        } else {
+            let frac_zeroes = self.0.leading_zeros() - 15;
+            Fp32(self.0 << (frac_zeroes / 2))
+        };
+
+        for _ in 0..3 {
+            s = (s.saturating_add(self / s)) / 2;
+        }
+
+        s
     }
 }
 

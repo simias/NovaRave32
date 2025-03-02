@@ -218,6 +218,8 @@ fn decode_page(m: &mut NoRa32, lut_idx: usize) -> usize {
                             },
                             _ => unkn,
                         },
+                        // SLTI
+                        0b010 => Instruction::Slti { rd, rs1, imm },
                         // SLTIU
                         0b011 => Instruction::Sltiu { rd, rs1, imm },
                         // XORI
@@ -288,9 +290,13 @@ fn decode_page(m: &mut NoRa32, lut_idx: usize) -> usize {
                             // SLL
                             0b001 => Instruction::Sll { rd, rs1, rs2 },
                             // SLTU
+                            0b010 => Instruction::Slt { rd, rs1, rs2 },
+                            // SLTU
                             0b011 => Instruction::Sltu { rd, rs1, rs2 },
                             // XOR
                             0b100 => Instruction::Xor { rd, rs1, rs2 },
+                            // SRL
+                            0b101 => Instruction::Srl { rd, rs1, rs2 },
                             // OR
                             0b110 => Instruction::Or { rd, rs1, rs2 },
                             // AND
@@ -300,6 +306,8 @@ fn decode_page(m: &mut NoRa32, lut_idx: usize) -> usize {
                         0b000_0001 => match funct3 {
                             // MUL
                             0b000 => Instruction::Mul { rd, rs1, rs2 },
+                            // MULH
+                            0b001 => Instruction::Mulh { rd, rs1, rs2 },
                             // DIVU
                             0b101 => Instruction::Divu { rd, rs1, rs2 },
                             // MULHU
@@ -658,6 +666,11 @@ pub enum Instruction {
         rs1: Reg,
         rs2: Reg,
     },
+    Slt {
+        rd: Reg,
+        rs1: Reg,
+        rs2: Reg,
+    },
     Sltu {
         rd: Reg,
         rs1: Reg,
@@ -688,6 +701,11 @@ pub enum Instruction {
         rs1: Reg,
         rs2: Reg,
     },
+    Mulh {
+        rd: Reg,
+        rs1: Reg,
+        rs2: Reg,
+    },
     Mulhu {
         rd: Reg,
         rs1: Reg,
@@ -699,6 +717,11 @@ pub enum Instruction {
         rs2: Reg,
     },
     AddImm {
+        rd: Reg,
+        rs1: Reg,
+        imm: i16,
+    },
+    Slti {
         rd: Reg,
         rs1: Reg,
         imm: i16,
@@ -734,6 +757,11 @@ pub enum Instruction {
         shamt: u8,
     },
     Sll {
+        rd: Reg,
+        rs1: Reg,
+        rs2: Reg,
+    },
+    Srl {
         rd: Reg,
         rs1: Reg,
         rs2: Reg,

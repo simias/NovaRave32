@@ -322,6 +322,9 @@ pub fn step(m: &mut NoRa32) {
     let pc = m.cpu.pc;
 
     let (inst, npc) = decoder::fetch_instruction(m, pc);
+
+    // info!("{:?} {:?}", inst, m.cpu);
+
     m.cpu.pc = npc;
 
     match inst {
@@ -336,6 +339,12 @@ pub fn step(m: &mut NoRa32) {
             let b = m.cpu.xget(rs2);
 
             m.cpu.xset(rd, a.wrapping_add(b));
+        }
+        Instruction::Slt { rd, rs1, rs2 } => {
+            let a = m.cpu.xget(rs1) as i32;
+            let b = m.cpu.xget(rs2) as i32;
+
+            m.cpu.xset(rd, if a < b { 1 } else { 0 });
         }
         Instruction::Sltu { rd, rs1, rs2 } => {
             let a = m.cpu.xget(rs1);
@@ -387,6 +396,17 @@ pub fn step(m: &mut NoRa32) {
 
             m.cpu.xset(rd, (p >> 32) as u32);
         }
+        Instruction::Mulh { rd, rs1, rs2 } => {
+            let a = m.cpu.xget(rs1) as i32;
+            let b = m.cpu.xget(rs2) as i32;
+
+            let p = i64::from(a) * i64::from(b);
+
+            // Add a slight penalty for multiplications
+            m.tick(1);
+
+            m.cpu.xset(rd, (p >> 32) as u32);
+        }
         Instruction::Divu { rd, rs1, rs2 } => {
             let a = m.cpu.xget(rs1);
             let b = m.cpu.xget(rs2);
@@ -412,6 +432,12 @@ pub fn step(m: &mut NoRa32) {
 
             m.cpu.xset(rd, v.wrapping_add(imm.extend()));
         }
+        Instruction::Slti { rd, rs1, imm } => {
+            let v = m.cpu.xget(rs1) as i32;
+            let i = imm.extend() as i32;
+
+            m.cpu.xset(rd, if v < i { 1 } else { 0 });
+        }
         Instruction::Sltiu { rd, rs1, imm } => {
             let v = m.cpu.xget(rs1);
             let i = imm.extend();
@@ -436,8 +462,10 @@ pub fn step(m: &mut NoRa32) {
         Instruction::SraImm { rd, rs1, shamt } => {
             let v = m.cpu.xget(rs1) as i32;
 
-            m.cpu
-                .xset(rd, v.checked_shr(u32::from(shamt)).unwrap_or(0) as u32);
+            m.cpu.xset(
+                rd,
+                v.checked_shr(u32::from(shamt)).unwrap_or(v >> 31) as u32,
+            );
         }
         Instruction::SrlImm { rd, rs1, shamt } => {
             let v = m.cpu.xget(rs1);
@@ -446,9 +474,15 @@ pub fn step(m: &mut NoRa32) {
         }
         Instruction::Sll { rd, rs1, rs2 } => {
             let a = m.cpu.xget(rs1);
-            let b = m.cpu.xget(rs2);
+            let b = m.cpu.xget(rs2) & 0x1f;
 
             m.cpu.xset(rd, a.checked_shl(b).unwrap_or(0));
+        }
+        Instruction::Srl { rd, rs1, rs2 } => {
+            let a = m.cpu.xget(rs1);
+            let b = m.cpu.xget(rs2) & 0x1f;
+
+            m.cpu.xset(rd, a.checked_shr(b).unwrap_or(0));
         }
         Instruction::SllImm { rd, rs1, shamt } => {
             let v = m.cpu.xget(rs1);

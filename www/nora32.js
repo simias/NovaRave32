@@ -114,9 +114,9 @@ async function start() {
 
     switch_to_vbo();
 
-    setInterval(() => {
-        nora32.run_frame()
-    }, 1000/30);
+    // setInterval(() => {
+        nora32.run_frame();
+    // }, 1000);
 }
 
 function switch_to_vbo() {
@@ -188,6 +188,9 @@ function redirectConsole(elem_id) {
     function logToPage(type, ...args) {
         const msg = args.map(arg => (typeof arg === "object" ? JSON.stringify(arg, null, 2) : arg)).join(" ");
         elem.textContent += `[${type}] ${msg}\n`;
+        if (elem.textContent.length > 1024 * 1024) {
+            elem.textContent = "";
+        }
     }
 
     ['log', 'info', 'warn', 'error', 'debug'].forEach(m => {
