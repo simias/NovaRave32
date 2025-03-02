@@ -129,8 +129,8 @@ fn one_shot_task() {
     info!("One-shot-task ended");
 }
 
-// Constructs a regular octahedron centered on `c` and with all vertices at a distance `r` from the
-// `c`. Returns the 10 vertices and the indices to build the 8 triangles
+/// Constructs a regular octahedron centered on `c` and with all vertices at a distance `r` from
+/// the `c`. Returns the 10 vertices and the indices to build the 8 triangles
 fn build_octahedron(c: Vec3<i16>, r: i16) -> ([Vec3<i16>; 6], [u8; 3 * 8]) {
     let vertices = [
         c + [0, r, 0],
