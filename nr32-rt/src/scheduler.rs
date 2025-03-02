@@ -32,20 +32,19 @@ impl Scheduler {
 
         // Create the idle task.
         let idle_task = unsafe { core::mem::transmute::<usize, fn()>(_idle_task as usize) };
-        self.spawn_task(idle_task, i32::MIN, 0);
+        self.spawn_task(idle_task as usize, i32::MIN, 0);
         self.switch_to_task(0);
     }
 
-    pub fn spawn_task(&mut self, f: fn(), prio: i32, stack_size: usize) {
+    pub fn spawn_task(&mut self, entry: usize, prio: i32, stack_size: usize) {
         let (stack, sp) = stack_alloc(stack_size + BANKED_REGISTER_LEN);
-        let f = f as usize;
         // Put function in banked a0
         unsafe {
             let p = sp - BANKED_REGISTER_LEN + 23 * 4;
 
             let p = p as *mut usize;
 
-            *p = f;
+            *p = entry;
         };
 
         let new_task = Task {

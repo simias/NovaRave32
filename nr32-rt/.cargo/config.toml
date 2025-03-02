@@ -1,0 +1,10 @@
+[target.riscv32imac-unknown-none-elf]
+rustflags = [
+  "-C", "link-arg=-Tmemory.x",
+  # This reduces the code size and makes the code faster, but it's not stable
+  # yet so it generates a warning
+  # "-C", "target-feature=+relax",
+]
+
+[build]
+target = "riscv32imac-unknown-none-elf"

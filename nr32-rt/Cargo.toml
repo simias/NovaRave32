@@ -1,0 +1,14 @@
+[package]
+name = "nr32-rt"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+log = "0.4"
+embedded-alloc = "0.6"
+spin = { version = "0.9", features = [ "spin_mutex" ] }
+
+[dependencies.riscv]
+version = "0.12"
+features = [ "critical-section-single-hart" ]
+

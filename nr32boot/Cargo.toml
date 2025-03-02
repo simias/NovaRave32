@@ -1,7 +1,11 @@
 [package]
-name = "nr32boot-boot"
+name = "nr32boot"
 version = "0.1.0"
 edition = "2021"
+
+[dependencies]
+log = "0.4"
+nr32-rt = { path = "../nr32-rt" }
 
 [profile.dev]
 panic = "abort"
@@ -15,13 +19,4 @@ panic = "abort"
 lto = true
 codegen-units = 1
 overflow-checks = false
-
-[dependencies]
-log = "0.4"
-embedded-alloc = "0.6"
-spin = { version = "0.9", features = [ "spin_mutex" ] }
-
-[dependencies.riscv]
-version = "0.12"
-features = [ "critical-section-single-hart" ]
 
