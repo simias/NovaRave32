@@ -317,6 +317,8 @@ fn decode_page(m: &mut NoRa32, lut_idx: usize) -> usize {
                         0b010_0000 => match funct3 {
                             // SUB
                             0b000 => Instruction::Sub { rd, rs1, rs2 },
+                            // SRA
+                            0b101 => Instruction::Sra { rd, rs1, rs2 },
                             _ => unkn,
                         },
                         _ => unkn,
@@ -762,6 +764,11 @@ pub enum Instruction {
         rs2: Reg,
     },
     Srl {
+        rd: Reg,
+        rs1: Reg,
+        rs2: Reg,
+    },
+    Sra {
         rd: Reg,
         rs1: Reg,
         rs2: Reg,

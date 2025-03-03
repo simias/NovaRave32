@@ -56,8 +56,31 @@ pub fn perspective(m: Matrix, fovy: Angle, aspect_ratio: Fp32, near: Fp32, far: 
 }
 
 /// Configure `m` to hold the given "look-at" matrix. `up` will usually be `[ 0, 1, 0]`.
-pub fn loot_at(m: Matrix, eye_pos: Vec3<Fp32>, target_pos: Vec3<Fp32>, up: Vec3<Fp32>) {
-    todo!()
+pub fn look_at(m: Matrix, eye_pos: Vec3, target_pos: Vec3, up: Vec3) {
+    let f = (target_pos - eye_pos).normalize();
+    let up = up.normalize();
+
+    let s = f.cross(up);
+    let u = s.normalize().cross(f);
+
+    let tx = -eye_pos.dot(s);
+    let ty = -eye_pos.dot(u);
+    let tz = eye_pos.dot(f);
+
+    identity(m);
+    set_matrix_component(m, 0, 0, s[0]);
+    set_matrix_component(m, 1, 0, s[1]);
+    set_matrix_component(m, 2, 0, s[2]);
+    set_matrix_component(m, 0, 1, u[0]);
+    set_matrix_component(m, 1, 1, u[1]);
+    set_matrix_component(m, 2, 1, u[2]);
+    set_matrix_component(m, 0, 2, -f[0]);
+    set_matrix_component(m, 1, 2, -f[1]);
+    set_matrix_component(m, 2, 2, -f[2]);
+
+    set_matrix_component(m, 3, 0, tx);
+    set_matrix_component(m, 3, 1, ty);
+    set_matrix_component(m, 3, 2, tz);
 }
 
 /// Configure `m` to hold the given translation matrix

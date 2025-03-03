@@ -476,13 +476,19 @@ pub fn step(m: &mut NoRa32) {
             let a = m.cpu.xget(rs1);
             let b = m.cpu.xget(rs2) & 0x1f;
 
-            m.cpu.xset(rd, a.checked_shl(b).unwrap_or(0));
+            m.cpu.xset(rd, a << b)
         }
         Instruction::Srl { rd, rs1, rs2 } => {
             let a = m.cpu.xget(rs1);
             let b = m.cpu.xget(rs2) & 0x1f;
 
-            m.cpu.xset(rd, a.checked_shr(b).unwrap_or(0));
+            m.cpu.xset(rd, a >> b)
+        }
+        Instruction::Sra { rd, rs1, rs2 } => {
+            let a = m.cpu.xget(rs1) as i32;
+            let b = m.cpu.xget(rs2) & 0x1f;
+
+            m.cpu.xset(rd, (a >> b) as u32)
         }
         Instruction::SllImm { rd, rs1, shamt } => {
             let v = m.cpu.xget(rs1);
