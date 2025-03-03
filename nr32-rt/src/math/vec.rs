@@ -84,8 +84,6 @@ impl Vec3 {
         let y = Fp32::from_s16_16(y);
         let z = Fp32::from_s16_16(z);
 
-        info!("Rescaled {} >> {}: {}", self, shift, Vec3([x, y, z]));
-
         let norm2 = x * x + y * y + z * z;
 
         if norm2 == Fp32::ZERO {

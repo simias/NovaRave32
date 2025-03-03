@@ -77,7 +77,6 @@ pub fn look_at(m: Matrix, eye_pos: Vec3, target_pos: Vec3, up: Vec3) {
     set_matrix_component(m, 0, 2, -f[0]);
     set_matrix_component(m, 1, 2, -f[1]);
     set_matrix_component(m, 2, 2, -f[2]);
-
     set_matrix_component(m, 3, 0, tx);
     set_matrix_component(m, 3, 1, ty);
     set_matrix_component(m, 3, 2, tz);

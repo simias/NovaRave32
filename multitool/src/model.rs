@@ -341,8 +341,8 @@ impl Model {
 
         // Matrix header
         {
-            // Put model matrix in M7
-            let m = 7;
+            // Put model matrix in M0
+            let m = 0;
 
             // Matrix identity
             wu32(w, (0x10 << 24) | (m << 12))?;
@@ -373,10 +373,10 @@ impl Model {
                 }
             }
 
-            // M0 = M1 * M7
+            // M0 = M1 * M0
             let mo = 0;
             let ma = 1;
-            let mb = 7;
+            let mb = 0;
 
             wu32(w, (0x10 << 24) | (0x02 << 16) | (mo << 12) | (ma << 4) | mb)?;
         }
