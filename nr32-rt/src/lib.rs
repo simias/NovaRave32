@@ -28,7 +28,7 @@ extern "C" {
     fn nr32_main();
 }
 
-/// This task much schedule the first task (by setting mepc, mscratch etc...) and return
+/// The system entry must schedule the first task (by setting mepc, mscratch etc...) and return
 #[export_name = "_system_entry"]
 pub fn rust_start() {
     system_init();
@@ -119,7 +119,7 @@ fn handle_ecall() {
         }
         syscalls::SYS_EXIT => {
             sched.exit_current_task();
-            0
+            return;
         }
         _ => panic!("Unknown syscall 0x{:02x}", code),
     };
