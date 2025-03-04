@@ -505,26 +505,26 @@ fn decode_page(m: &mut NoRa32, lut_idx: usize) -> usize {
                         // C.SUB
                         (0b10_0011, 0b00) => Instruction::Sub {
                             rd: cr_7x(op).out(),
-                            rs1: cr_7x(op).out(),
-                            rs2: cr_2x(op).out(),
+                            rs1: cr_7x(op),
+                            rs2: cr_2x(op),
                         },
                         // C.XOR
                         (0b10_0011, 0b01) => Instruction::Xor {
                             rd: cr_7x(op).out(),
-                            rs1: cr_7x(op).out(),
-                            rs2: cr_2x(op).out(),
+                            rs1: cr_7x(op),
+                            rs2: cr_2x(op),
                         },
                         // C.OR
                         (0b10_0011, 0b10) => Instruction::Or {
                             rd: cr_7x(op).out(),
-                            rs1: cr_7x(op).out(),
-                            rs2: cr_2x(op).out(),
+                            rs1: cr_7x(op),
+                            rs2: cr_2x(op),
                         },
                         // C.AND
                         (0b10_0011, 0b11) => Instruction::And {
                             rd: cr_7x(op).out(),
-                            rs1: cr_7x(op).out(),
-                            rs2: cr_2x(op).out(),
+                            rs1: cr_7x(op),
+                            rs2: cr_2x(op),
                         },
                         _ => unkn,
                     },

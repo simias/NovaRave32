@@ -53,7 +53,6 @@ _start:
 
 .bss_zero_done:
 
-    mv      a0, sp
     jal     _system_entry
 
     j       __return_to_user
@@ -86,7 +85,7 @@ _trap_handler:
     sc.w    zero, zero, (sp)
     .option pop
 
-    sw      x1, (31 * 4)(sp)
+    sw      x1,  (31 * 4)(sp)
     /* Skip x2 = SP */
     /* Skip x3 = GP */
     sw      x4,  (29 * 4)(sp)
