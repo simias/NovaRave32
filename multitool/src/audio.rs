@@ -112,10 +112,10 @@ impl AudioBuffer {
         w.write_all(b"NRAD")?;
 
         // The NovaRave SPU runs at 48kHz and uses 12 fractional bits when stepping.
-        let spu_base: u32 = 48_000 << 12;
+        let spu_base: u32 = 48_000;
 
         // Divider to reach the sample rate
-        let spu_step = (spu_base + self.sample_rate / 2) / self.sample_rate;
+        let spu_step = ((self.sample_rate << 12) + spu_base / 2) / spu_base;
 
         let spu_step = if spu_step > 0x3fff {
             0x3fff
@@ -124,9 +124,10 @@ impl AudioBuffer {
         };
 
         info!(
-            "SPU_STEP will be {} resulting in a true sample rate of {}Hz",
+            "SPU_STEP will be 0x{:x} ({:.03}) resulting in a true sample rate of {}Hz",
             spu_step,
-            spu_base / u32::from(spu_step)
+            (spu_step as f32) / ((1 << 12) as f32),
+            (u32::from(spu_step) * spu_base + (1 << 11)) >> 12
         );
 
         w.write_u16::<LittleEndian>(spu_step)?;
