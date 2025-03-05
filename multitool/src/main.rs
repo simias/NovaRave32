@@ -3,6 +3,7 @@ extern crate log;
 #[macro_use]
 extern crate anyhow;
 
+mod audio;
 mod model;
 
 use anyhow::Result;
@@ -53,6 +54,24 @@ enum Commands {
         #[arg(short, long)]
         output: Option<PathBuf>,
     },
+    /// Converts audio files into NRAD files
+    Audio {
+        /// The audio file to process
+        input_file: PathBuf,
+
+        /// Sample rate for the output in Hz (defaults to input sample rate). Max 48000Hz.
+        #[arg(short, long)]
+        sample_rate: Option<u32>,
+
+        /// Which input channel to use (output files are always mono). If not set, all available
+        /// channels will be averaged.
+        #[arg(long, short)]
+        channel: Option<usize>,
+
+        /// NRAD file to dump the converted mesh
+        #[arg(short, long)]
+        output: Option<PathBuf>,
+    },
 }
 
 fn main() -> Result<()> {
@@ -83,6 +102,32 @@ fn main() -> Result<()> {
                 info!("Dumping model to {}", out.display());
                 let mut out = BufWriter::new(File::create(out)?);
                 model.dump_nr3d(&mut out)?
+            }
+        }
+        Commands::Audio {
+            input_file,
+            sample_rate,
+            channel,
+            output,
+        } => {
+            let buf = audio::AudioBuffer::from_path(input_file, channel)?;
+
+            info!(
+                "Input sample rate: {}Hz ({} samples total)",
+                buf.sample_rate(),
+                buf.samples().len()
+            );
+
+            if let Some(sample_rate) = sample_rate {
+                if sample_rate != buf.sample_rate() {
+                    todo!("Resample {} -> {}!", buf.sample_rate(), sample_rate);
+                }
+            }
+
+            if let Some(out) = output {
+                info!("Dumping audio to {}", out.display());
+                let mut out = BufWriter::new(File::create(out)?);
+                buf.dump_nrad(&mut out)?
             }
         }
     }
