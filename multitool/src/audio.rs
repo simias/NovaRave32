@@ -130,91 +130,227 @@ impl AudioBuffer {
             (u32::from(spu_step) * spu_base + (1 << 11)) >> 12
         );
 
+        // Padding that could be used for flags later
+        w.write_u16::<LittleEndian>(0)?;
         w.write_u16::<LittleEndian>(spu_step)?;
 
-        // We encode blocks of 33 samples. The first one is stored in full, the rest is encoded as
-        // 4-bit deltas.
-        //
-        // The total block size is therefore 2B header + 2B sample0 + 16B payload = 20B
-        let block_len = 33;
+        // We encode blocks of 28 samples. Each encoded sample will be 4 bits, plus 2B header for a
+        // total of 16B per block
+        let block_len = 28;
 
-        let nblocks = (self.samples.len() + block_len - 1) / block_len;
+        let nblocks = self.samples.len().div_ceil(block_len);
 
-        // We carry the step index from block to block
-        let mut index = 0i8;
+        let mut start = true;
+
+        let mut prev_samples = [0, 0];
 
         for (i, block) in self.samples.chunks(block_len).enumerate() {
             let stop = (i + 1) == nblocks;
 
-            let mut prev = block[0] as i32;
+            let _filter = 0;
 
-            w.write_u8(stop as u8)?;
-            w.write_u8(index as u8)?;
-            w.write_i16::<LittleEndian>(prev as i16)?;
+            let mut samples: Vec<i16> = block.to_vec();
 
-            let mut b: u8 = 0;
+            // Make sure the last block is full by copying the last sample as padding
+            samples.resize(block_len, *samples.last().unwrap());
 
-            for si in 1..block_len {
-                let s = match block.get(si) {
-                    Some(&s) => s as i32,
-                    None => prev as i32,
-                };
+            let mut filter = 0;
 
-                let step_size = STEP_SIZE_LUT[index as usize] as u32;
+            let (mut encoded, mut shift) = adpcm_encode_block(&samples, prev_samples, filter);
 
-                let diff = s - prev;
+            let mut decoded = adpcm_decode_block(&encoded, prev_samples, filter, shift);
 
-                let abs_diff = diff.unsigned_abs();
+            // Try the other filters to see if we get a better match.
+            let mut error = adpcm_error(&samples, &decoded);
 
-                let mut encoded = (abs_diff << 2) / step_size;
+            // If we're (re)starting, we don't know what's in prev_samples, therefore we cannot use
+            // any filter besides 0 (that ignores the previous samples)
+            if start {
+                start = false;
+            } else if error > 0 {
+                for f in 1..FILTER_WEIGHTS.len() {
+                    let (fencoded, fshift) = adpcm_encode_block(&samples, prev_samples, f);
 
-                if encoded > 0b111 {
-                    encoded = 0b111
+                    let fdecoded = adpcm_decode_block(&fencoded, prev_samples, f, fshift);
+
+                    let ferror = adpcm_error(&samples, &fdecoded);
+
+                    if ferror < error {
+                        filter = f;
+                        error = ferror;
+                        shift = fshift;
+                        encoded = fencoded;
+                        decoded = fdecoded;
+
+                        if error == 0 {
+                            break;
+                        }
+                    }
                 }
-
-                if diff < 0 {
-                    encoded |= 8;
-                }
-
-                if si & 1 == 1 {
-                    b = (encoded as u8) << 4;
-                } else {
-                    b |= encoded as u8;
-                    w.write_u8(b)?;
-                }
-
-                // Now we need to update `prev` for the next sample by effectively decoding the
-                // current sample
-                let encoded_abs = (encoded & 7) as u32;
-                let encoded_diff = (step_size >> 3) + ((encoded_abs * step_size) >> 2);
-
-                let mut encoded_diff = encoded_diff as i32;
-
-                if encoded & 8 != 0 {
-                    encoded_diff = -encoded_diff;
-                }
-
-                prev += encoded_diff;
-
-                prev = prev.min(i32::from(i16::MAX));
-                prev = prev.max(i32::from(i16::MIN));
-
-                index += ADPCM_INDEX_OFF[encoded_abs as usize];
-                index = index.max(0);
-                index = index.min((STEP_SIZE_LUT.len() - 1) as i8);
             }
+
+            let header = ((stop as u16) << 8) | ((filter as u16) << 4) | (shift as u16);
+            w.write_u16::<LittleEndian>(header)?;
+
+            for e in encoded {
+                w.write_u16::<LittleEndian>(e)?;
+            }
+
+            prev_samples[0] = decoded[block_len - 2];
+            prev_samples[1] = decoded[block_len - 1];
         }
 
         Ok(())
     }
 }
 
-const ADPCM_INDEX_OFF: [i8; 8] = [-1, -1, -1, -1, 2, 4, 6, 8];
+/// Encodes `samples` with the given `filter`. Returns the encoded buffer and the shift value used.
+///
+/// If filter is not 0 then `prev_samples` should be the last two *decoded* samples from the
+/// previous block.
+///
+/// The number of samples should be a multiple of 4 since we encode 4 bits at a time into u16
+fn adpcm_encode_block(samples: &[i16], prev_samples: [i16; 2], filter: usize) -> (Vec<u16>, u8) {
+    assert_eq!(samples.len() % 4, 0);
 
-const STEP_SIZE_LUT: [i16; 89] = [
-    7, 8, 9, 10, 11, 12, 13, 14, 16, 17, 19, 21, 23, 25, 28, 31, 34, 37, 41, 45, 50, 55, 60, 66,
-    73, 80, 88, 97, 107, 118, 130, 143, 157, 173, 190, 209, 230, 253, 279, 307, 337, 371, 408, 449,
-    494, 544, 598, 658, 724, 796, 876, 963, 1060, 1166, 1282, 1411, 1552, 1707, 1878, 2066, 2272,
-    2499, 2749, 3024, 3327, 3660, 4026, 4428, 4871, 5358, 5894, 6484, 7132, 7845, 8630, 9493,
-    10442, 11487, 12635, 13899, 15289, 16818, 18500, 20350, 22385, 24623, 27086, 29794, 32767,
-];
+    let (wp, wn) = FILTER_WEIGHTS[filter];
+    let wp = wp as i32;
+    let wn = wn as i32;
+
+    let mut diff_max = 0;
+    let mut diff_min = -1;
+
+    // First pass where we look for the magnitude of the encoded difference to chose the shift
+    // value.
+    let mut ps = [i32::from(prev_samples[0]), i32::from(prev_samples[1])];
+
+    for &s in samples {
+        let s = i32::from(s);
+
+        let mut predicted = 0;
+
+        predicted += (ps[0] * wn) >> 6;
+        predicted += (ps[1] * wp) >> 6;
+
+        let diff = s - predicted;
+
+        if diff > diff_max {
+            diff_max = diff;
+        }
+
+        diff_max = diff_max.max(diff);
+        diff_min = diff_min.min(diff);
+
+        ps[0] = ps[1];
+        ps[1] = s;
+    }
+
+    // Note that this code is somewhat sub-optimal because the choice of shift value will change
+    // the precision of the diff encoding and therefore the intermediate sample values, so in edge
+    // cases we may end up with increased diff values that no longer fit post-shift (or shift
+    // values unnecessarily large in other cases). In this case we'll just saturate the diff and
+    // hope that it'll converge after a few samples.
+    //
+    // In order to handle this edge case we could see if `shift + 1` and `shift - 1` result in
+    // smaller errors.
+
+    // The +1 is because we also need the sign bit
+    let significant_bit_pos = (32 - diff_max.leading_zeros() + 1) as i32;
+    let significant_bit_neg = (32 - diff_min.leading_ones() + 1) as i32;
+
+    // We encode 4 bits per sample so we need to scale to fit the MSB
+    let shift_pos = significant_bit_pos - 4;
+    let shift_neg = significant_bit_neg - 4;
+
+    let shift = shift_pos.max(shift_neg).clamp(0, 12) as u8;
+
+    // Now that we have the shift, we can encode properly
+    let mut ps = [i32::from(prev_samples[0]), i32::from(prev_samples[1])];
+
+    let mut e = 0u16;
+    let mut res = Vec::with_capacity(samples.len() / 4);
+
+    for (i, &s) in samples.iter().enumerate() {
+        let s = i32::from(s);
+
+        let mut predicted = 0;
+
+        predicted += (ps[0] * wn) >> 6;
+        predicted += (ps[1] * wp) >> 6;
+
+        let diff = (s - predicted) >> shift;
+
+        let diff = diff.clamp(-8, 7);
+
+        predicted += diff << shift;
+        predicted = predicted.min(i32::from(i16::MAX)).max(i32::from(i16::MIN));
+
+        ps[0] = ps[1];
+        ps[1] = predicted;
+
+        let encoded = (diff as u16) & 0xf;
+
+        let bpos = (i & 3) * 4;
+        e |= encoded << bpos;
+        if bpos == 12 {
+            res.push(e);
+            e = 0;
+        }
+    }
+
+    (res, shift)
+}
+
+fn adpcm_decode_block(
+    encoded: &[u16],
+    prev_samples: [i16; 2],
+    filter: usize,
+    shift: u8,
+) -> Vec<i16> {
+    let (wp, wn) = FILTER_WEIGHTS[filter];
+    let wp = wp as i32;
+    let wn = wn as i32;
+
+    let mut res = Vec::with_capacity(encoded.len() * 4);
+
+    let mut ps = [i32::from(prev_samples[0]), i32::from(prev_samples[1])];
+    for e in encoded {
+        for i in 0..4 {
+            // Sign-extend
+            let e = ((e >> (i * 4)) << 12) as i16;
+            let diff = e >> (12 - shift);
+
+            let mut predicted = 0;
+
+            predicted += (ps[0] * wn) >> 6;
+            predicted += (ps[1] * wp) >> 6;
+            predicted += i32::from(diff);
+
+            let sample = predicted.min(i32::from(i16::MAX)).max(i32::from(i16::MIN)) as i16;
+
+            res.push(sample);
+
+            ps[0] = ps[1];
+            ps[1] = sample as i32;
+        }
+    }
+
+    res
+}
+
+/// Quantify the error between source and decoded
+///
+/// Returns the sum of absolute differences between `source` and `decoded`
+fn adpcm_error(source: &[i16], decoded: &[i16]) -> u32 {
+    assert_eq!(source.len(), decoded.len());
+
+    source
+        .iter()
+        .zip(decoded.iter())
+        .map(|(&s, &d)| ((s as i32) - (d as i32)).unsigned_abs())
+        .sum()
+}
+
+/// Weights used for ADPCM encoding. The first weight is applied to the previous sample, the 2nd to
+/// the penultimate
+const FILTER_WEIGHTS: [(i8, i8); 5] = [(0, 0), (60, 0), (115, -52), (98, -55), (112, -60)];
