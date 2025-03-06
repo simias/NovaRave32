@@ -1,9 +1,17 @@
 use anyhow::Result;
-use byteorder::{LittleEndian, WriteBytesExt};
+use byteorder::{LittleEndian, ReadBytesExt, WriteBytesExt};
+use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
 use rubato::{FftFixedIn, Resampler};
 use std::fs::File;
-use std::io::Write;
+use std::io::{ErrorKind, Write};
 use std::path::Path;
+use std::sync::Mutex;
+use std::sync::{
+    atomic::{AtomicBool, Ordering},
+    Arc,
+};
+use std::thread;
+use std::time::Duration;
 use symphonia::core::audio::AudioBuffer as SAudioBuffer;
 use symphonia::core::audio::Signal;
 use symphonia::core::codecs::{DecoderOptions, CODEC_TYPE_NULL};
@@ -18,9 +26,71 @@ pub struct AudioBuffer {
 
 impl AudioBuffer {
     pub fn from_path<P: AsRef<Path>>(audio_path: P, channel: Option<usize>) -> Result<AudioBuffer> {
+        let p = audio_path.as_ref();
+
+        let mut is_nrad = false;
+
+        if let Some(ext) = p.extension().and_then(|ext| ext.to_str()) {
+            if ext.to_lowercase() == "nrad" {
+                is_nrad = true;
+            }
+        }
+
         let file = File::open(audio_path)?;
 
-        AudioBuffer::from_file(file, channel)
+        if is_nrad {
+            AudioBuffer::from_nrad_file(file)
+        } else {
+            AudioBuffer::from_file(file, channel)
+        }
+    }
+
+    pub fn from_nrad_file(mut audio_file: File) -> Result<AudioBuffer> {
+        let magic = audio_file.read_u32::<LittleEndian>()?;
+
+        if magic != 0x4441524e {
+            bail!("Invalid NRAD magic");
+        }
+
+        let _pad = audio_file.read_u16::<LittleEndian>()?;
+        let spu_step = audio_file.read_u16::<LittleEndian>()?;
+
+        let spu_base: u32 = 48_000;
+
+        let sample_rate = (u32::from(spu_step) * spu_base + (1 << 11)) >> 12;
+
+        let mut samples = Vec::new();
+
+        let mut prev_samples = [0, 0];
+
+        loop {
+            let header = match audio_file.read_u16::<LittleEndian>() {
+                Ok(h) => h,
+                Err(e) if e.kind() == ErrorKind::UnexpectedEof => break,
+                e => e?,
+            };
+
+            let filter = ((header >> 4) & 0xf) as usize;
+            let shift = (header & 0xf) as u8;
+
+            let mut encoded = Vec::with_capacity(14);
+
+            for _ in 0..7 {
+                encoded.push(audio_file.read_u16::<LittleEndian>()?);
+            }
+
+            let decoded = adpcm_decode_block(&encoded, prev_samples, filter, shift);
+
+            prev_samples[0] = decoded[26];
+            prev_samples[1] = decoded[27];
+
+            samples.extend_from_slice(&decoded);
+        }
+
+        Ok(AudioBuffer {
+            sample_rate,
+            samples,
+        })
     }
 
     pub fn from_file(audio_file: File, channel: Option<usize>) -> Result<AudioBuffer> {
@@ -110,7 +180,6 @@ impl AudioBuffer {
         self.sample_rate
     }
 
-    #[must_use]
     pub fn resample(&self, sample_rate: u32) -> Result<AudioBuffer> {
         if self.sample_rate == sample_rate {
             return Ok(self.clone());
@@ -137,6 +206,59 @@ impl AudioBuffer {
             sample_rate,
             samples: resampled,
         })
+    }
+
+    /// Play the audio on the system's default output device
+    pub fn playback(&self) -> Result<()> {
+        let host = cpal::default_host();
+        let device = host
+            .default_output_device()
+            .ok_or_else(|| anyhow!("No output device available"))?;
+        let config = device.default_output_config()?.config();
+
+        info!(
+            "Initiating playback on `{}` (sample rate: {}Hz)",
+            device.name()?,
+            config.sample_rate.0
+        );
+
+        let buf = self.resample(config.sample_rate.0)?;
+
+        let channels = config.channels as usize;
+
+        let finished = Arc::new(AtomicBool::new(false));
+        let sample_index = Arc::new(Mutex::new(0));
+
+        let finished_clone = Arc::clone(&finished);
+
+        let stream = device.build_output_stream(
+            &config,
+            move |data: &mut [i16], _: &cpal::OutputCallbackInfo| {
+                let mut index = sample_index.lock().unwrap();
+
+                for frame in data.chunks_mut(channels) {
+                    if *index >= buf.samples.len() {
+                        finished_clone.store(true, Ordering::SeqCst);
+                        return;
+                    }
+                    let sample = buf.samples[*index];
+                    for sample_out in frame.iter_mut() {
+                        *sample_out = sample;
+                    }
+                    *index += 1;
+                }
+            },
+            |err| eprintln!("Stream error: {}", err),
+            None,
+        )?;
+
+        stream.play()?;
+
+        while !finished.load(Ordering::SeqCst) {
+            thread::sleep(Duration::from_millis(100));
+        }
+
+        Ok(())
     }
 
     pub fn dump_nrad<W: Write>(&self, w: &mut W) -> Result<()> {

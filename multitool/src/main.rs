@@ -68,9 +68,13 @@ enum Commands {
         #[arg(long, short)]
         channel: Option<usize>,
 
-        /// NRAD file to dump the converted mesh
+        /// NRAD file to dump the converted audio
         #[arg(short, long)]
         output: Option<PathBuf>,
+
+        /// Play the audio on the system speaker
+        #[arg(long, default_value_t = false)]
+        playback: bool,
     },
 }
 
@@ -108,6 +112,7 @@ fn main() -> Result<()> {
             input_file,
             sample_rate,
             channel,
+            playback,
             output,
         } => {
             let mut buf = audio::AudioBuffer::from_path(input_file, channel)?;
@@ -130,6 +135,10 @@ fn main() -> Result<()> {
 
                     info!("Samples post-resampling: {}", buf.samples().len());
                 }
+            }
+
+            if playback {
+                buf.playback()?;
             }
 
             if let Some(out) = output {
