@@ -144,6 +144,8 @@ impl AudioBuffer {
 
         let mut prev_samples = [0, 0];
 
+        let mut total_error = 0;
+
         for (i, block) in self.samples.chunks(block_len).enumerate() {
             let stop = (i + 1) == nblocks;
 
@@ -196,9 +198,16 @@ impl AudioBuffer {
                 w.write_u16::<LittleEndian>(e)?;
             }
 
+            total_error += error;
+
             prev_samples[0] = decoded[block_len - 2];
             prev_samples[1] = decoded[block_len - 1];
         }
+
+        info!(
+            "Average absolute error per 16bit sample: {:.03}",
+            (total_error as f32) / (self.samples.len() as f32)
+        );
 
         Ok(())
     }
@@ -283,7 +292,7 @@ fn adpcm_encode_block(samples: &[i16], prev_samples: [i16; 2], filter: usize) ->
         let diff = diff.clamp(-8, 7);
 
         predicted += diff << shift;
-        predicted = predicted.min(i32::from(i16::MAX)).max(i32::from(i16::MIN));
+        predicted = predicted.clamp(i32::from(i16::MIN), i32::from(i16::MAX));
 
         ps[0] = ps[1];
         ps[1] = predicted;
@@ -326,7 +335,7 @@ fn adpcm_decode_block(
             predicted += (ps[1] * wp) >> 6;
             predicted += i32::from(diff);
 
-            let sample = predicted.min(i32::from(i16::MAX)).max(i32::from(i16::MIN)) as i16;
+            let sample = predicted.clamp(i32::from(i16::MIN), i32::from(i16::MAX)) as i16;
 
             res.push(sample);
 
