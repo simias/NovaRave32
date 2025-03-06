@@ -1,5 +1,6 @@
 use anyhow::Result;
 use byteorder::{LittleEndian, WriteBytesExt};
+use rubato::{FftFixedIn, Resampler};
 use std::fs::File;
 use std::io::Write;
 use std::path::Path;
@@ -9,6 +10,7 @@ use symphonia::core::codecs::{DecoderOptions, CODEC_TYPE_NULL};
 use symphonia::core::io::MediaSourceStream;
 use symphonia::default::get_probe;
 
+#[derive(Clone)]
 pub struct AudioBuffer {
     sample_rate: u32,
     samples: Vec<i16>,
@@ -106,6 +108,35 @@ impl AudioBuffer {
 
     pub fn sample_rate(&self) -> u32 {
         self.sample_rate
+    }
+
+    #[must_use]
+    pub fn resample(&self, sample_rate: u32) -> Result<AudioBuffer> {
+        if self.sample_rate == sample_rate {
+            return Ok(self.clone());
+        }
+
+        let samples: Vec<f32> = self.samples.iter().map(|&s| (s as f32) / 32768.).collect();
+
+        let mut resampler = FftFixedIn::<f32>::new(
+            self.sample_rate as usize,
+            sample_rate as usize,
+            samples.len(),
+            1024,
+            1,
+        )?;
+
+        let resampled = resampler.process(&[&samples], None)?;
+
+        let resampled = resampled[0]
+            .iter()
+            .map(|&s| (s * 32768.).round().clamp(i16::MIN as f32, i16::MAX as f32) as i16)
+            .collect();
+
+        Ok(AudioBuffer {
+            sample_rate,
+            samples: resampled,
+        })
     }
 
     pub fn dump_nrad<W: Write>(&self, w: &mut W) -> Result<()> {

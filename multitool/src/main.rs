@@ -110,7 +110,7 @@ fn main() -> Result<()> {
             channel,
             output,
         } => {
-            let buf = audio::AudioBuffer::from_path(input_file, channel)?;
+            let mut buf = audio::AudioBuffer::from_path(input_file, channel)?;
 
             info!(
                 "Input sample rate: {}Hz ({} samples total)",
@@ -120,7 +120,15 @@ fn main() -> Result<()> {
 
             if let Some(sample_rate) = sample_rate {
                 if sample_rate != buf.sample_rate() {
-                    todo!("Resample {} -> {}!", buf.sample_rate(), sample_rate);
+                    info!(
+                        "Resampling from {}Hz to {}Hz",
+                        buf.sample_rate(),
+                        sample_rate
+                    );
+
+                    buf = buf.resample(sample_rate)?;
+
+                    info!("Samples post-resampling: {}", buf.samples().len());
                 }
             }
 
