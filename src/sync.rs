@@ -1,12 +1,13 @@
 //! Keep track of how many cycles have been run for every module
 
-use crate::{gpu, systimer, CycleCounter, NoRa32, CPU_FREQ};
+use crate::{gpu, spu, systimer, CycleCounter, NoRa32, CPU_FREQ};
 
 /// Tokens used to keep track of the progress of each module individually
 #[derive(Copy, Clone, PartialEq, Eq, Debug)]
 pub enum SyncToken {
     SysTimer,
-    GpuTimer,
+    Gpu,
+    Spu,
 
     NumTokens,
 }
@@ -109,8 +110,12 @@ pub fn handle_events(m: &mut NoRa32) {
             systimer::run(m);
         }
 
-        if m.sync.first_event >= m.sync.next_event[SyncToken::GpuTimer as usize] {
+        if m.sync.first_event >= m.sync.next_event[SyncToken::Gpu as usize] {
             gpu::run(m);
+        }
+
+        if m.sync.first_event >= m.sync.next_event[SyncToken::Spu as usize] {
+            spu::run(m);
         }
 
         m.cycle_counter += event_delta;

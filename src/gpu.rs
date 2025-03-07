@@ -384,7 +384,7 @@ const FP_SHIFT: u32 = 16;
 
 const FRAME_CYCLES_30FPS: CycleCounter = (CPU_FREQ + 15) / 30;
 
-const GPUSYNC: sync::SyncToken = sync::SyncToken::GpuTimer;
+const GPUSYNC: sync::SyncToken = sync::SyncToken::Gpu;
 
 /// Max number of buffered matrices before we force a draw.
 ///

@@ -46,6 +46,9 @@ const screenProgram = gl.createProgram();
 const noRaVao = gl.createVertexArray();
 const screenVao = gl.createVertexArray();
 
+const nora32 = new NoRa32();
+
+
 function compileShaders(prog, vs, fs) {
     const vshader = compileShader(gl, gl.VERTEX_SHADER, vs);
     const fshader = compileShader(gl, gl.FRAGMENT_SHADER, fs);
@@ -57,6 +60,35 @@ function compileShaders(prog, vs, fs) {
     if (!gl.getProgramParameter(prog, gl.LINK_STATUS)) {
         console.error("Program linking failed:", gl.getProgramInfoLog(prog));
     }
+}
+
+async function startAudio() {
+    console.log("start audio");
+    const audioCtx = new AudioContext({ sampleRate: 44100 });
+
+    if (audioCtx.state === "suspended") {
+        await audioCtx.resume();
+    }
+
+    await audioCtx.audioWorklet.addModule("nora32audio.js");
+
+    const audioNode = new AudioWorkletNode(audioCtx, "nora32-audio-processor", {
+        outputChannelCount: [2]});
+
+    audioNode.port.onmessage = (event) => {
+        if (event.data === "need_samples") {
+            nora32.run_frame();
+        }
+    };
+
+    window.outputAudioSamples = function (samples_i16, count) {
+        let samples = new Int16Array(wasm.memory.buffer, samples_i16, count);
+
+        audioNode.port.postMessage(samples);
+    }
+
+    // Start audio. This is what we use to synchronize the emulation progress
+    audioNode.connect(audioCtx.destination);
 }
 
 async function start() {
@@ -108,15 +140,17 @@ async function start() {
 
     let rom = await fetchROM("./pkg/ROM.BIN");
 
-    let nora32 = new NoRa32();
-
     nora32.load_rom(rom);
 
     switch_to_vbo();
 
-    setInterval(() => {
-        nora32.run_frame();
-    }, 1000 / 30);
+    startAudio();
+
+    // Browsers usually block playback as long as the user hasn't interacted
+    // with the page
+    canvas.addEventListener("click", () => {
+        startAudio();
+    });
 }
 
 function switch_to_vbo() {

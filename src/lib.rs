@@ -7,6 +7,7 @@ extern crate log;
 mod cpu;
 mod gpu;
 mod irq;
+mod spu;
 mod sync;
 mod systimer;
 
@@ -33,6 +34,9 @@ extern "C" {
 
     /// Called when a new frame should be presented
     fn displayFramebuffer();
+
+    /// Called to feed interleaved stereo audio samples to the frontend
+    fn outputAudioSamples(samples_i16_ptr: *const i16, sample_count: usize);
 }
 
 #[wasm_bindgen]
@@ -44,6 +48,7 @@ pub struct NoRa32 {
     gpu: gpu::Gpu,
     systimer: systimer::Timer,
     irq: irq::Controller,
+    spu: spu::Spu,
     /// Buffer containing messages written to the debug console before they're flushed to stdout
     dbg_out: Vec<u8>,
     /// Sets to false if the emulator should shutdown
@@ -66,6 +71,7 @@ impl NoRa32 {
             gpu: gpu::Gpu::new(),
             systimer: systimer::Timer::new(),
             irq: irq::Controller::new(),
+            spu: spu::Spu::new(),
             dbg_out: Vec::new(),
             run: true,
             cycle_counter: 0,
@@ -108,6 +114,11 @@ impl NoRa32 {
             }
             sync::handle_events(self);
         }
+
+        spu::run(self);
+        let audio_samples = self.spu.samples();
+        outputAudioSamples(audio_samples.as_ptr(), audio_samples.len());
+        self.spu.clear_samples();
 
         sync::rebase_counters(self);
     }
