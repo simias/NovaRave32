@@ -2,9 +2,9 @@
 use crate::{cpu, sync, CycleCounter, NoRa32, CPU_FREQ};
 
 pub struct Timer {
-    /// Counter incrementing at 48kHz (and therefore should never overflow)
+    /// Counter incrementing every MTIME tick. Considered to never overflow.
     mtime: u64,
-    /// Trigger IRQ if mtime >= mtimecmp
+    /// Trigger IRQ if MTIME >= MTIMECMP
     mtimecmp: u64,
 }
 
@@ -20,8 +20,8 @@ impl Timer {
 pub fn run(m: &mut NoRa32) {
     let elapsed = sync::resync(m, TIMERSYNC);
 
-    let ticks = elapsed / MTIME_PERIOD_CPU_CLK;
-    let rem = elapsed % MTIME_PERIOD_CPU_CLK;
+    let ticks = elapsed / MTIME_CPU_CLK_DIV;
+    let rem = elapsed % MTIME_CPU_CLK_DIV;
 
     m.systimer.mtime += ticks as u64;
 
@@ -43,7 +43,7 @@ fn check_for_irq(m: &mut NoRa32) {
 
         // Force a resync when the IRQ will occur or in one second, whichever comes first
         let to_irq = to_irq.min(MTIME_HZ as u64);
-        let to_irq = (to_irq as CycleCounter) * MTIME_PERIOD_CPU_CLK;
+        let to_irq = (to_irq as CycleCounter) * MTIME_CPU_CLK_DIV;
 
         sync::next_event(m, TIMERSYNC, to_irq);
     }
@@ -93,5 +93,11 @@ pub fn store_word(m: &mut NoRa32, off: u32, v: u32) {
 
 const TIMERSYNC: sync::SyncToken = sync::SyncToken::SysTimer;
 
-pub const MTIME_HZ: CycleCounter = 48_000 * 16;
-pub const MTIME_PERIOD_CPU_CLK: CycleCounter = (CPU_FREQ + MTIME_HZ / 2) / MTIME_HZ;
+/// Clock divider used for MTIME increments
+pub const MTIME_CPU_CLK_DIV: CycleCounter = 32;
+
+/// Number of MTIME ticks per second
+///
+/// With a CPU_FREQ at 44.1kHz * 512 and an MTIME_CPU_CLK_DIV at 32 this will be slightly above
+/// 700kHz giving us ~10µs precision.
+pub const MTIME_HZ: CycleCounter = (CPU_FREQ + MTIME_CPU_CLK_DIV / 2) / MTIME_CPU_CLK_DIV;

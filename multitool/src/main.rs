@@ -59,7 +59,7 @@ enum Commands {
         /// The audio file to process
         input_file: PathBuf,
 
-        /// Sample rate for the output in Hz (defaults to input sample rate). Max 48000Hz.
+        /// Sample rate for the output in Hz (defaults to input sample rate).
         #[arg(short, long)]
         sample_rate: Option<u32>,
 

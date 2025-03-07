@@ -55,7 +55,7 @@ impl AudioBuffer {
         let _pad = audio_file.read_u16::<LittleEndian>()?;
         let spu_step = audio_file.read_u16::<LittleEndian>()?;
 
-        let spu_base: u32 = 48_000;
+        let spu_base: u32 = 44_100;
 
         let sample_rate = (u32::from(spu_step) * spu_base + (1 << 11)) >> 12;
 
@@ -264,8 +264,8 @@ impl AudioBuffer {
     pub fn dump_nrad<W: Write>(&self, w: &mut W) -> Result<()> {
         w.write_all(b"NRAD")?;
 
-        // The NovaRave SPU runs at 48kHz and uses 12 fractional bits when stepping.
-        let spu_base: u32 = 48_000;
+        // The NovaRave SPU runs at 44.1kHz and uses 12 fractional bits when stepping.
+        let spu_base: u32 = 44_100;
 
         // Divider to reach the sample rate
         let spu_step = ((self.sample_rate << 12) + spu_base / 2) / spu_base;

@@ -342,7 +342,7 @@ const SYS_TIMER: Range = Range {
 
 type CycleCounter = i32;
 
-/// The CPU runs at precisely 24.576MHz.
+/// The CPU runs at 22.6Mhz.
 ///
-/// The frequency is chosen to be a multiple of the audio frequency (48kHz).
-const CPU_FREQ: CycleCounter = 48_000 * 512;
+/// The frequency is chosen to be a multiple of the audio frequency (44.1kHz).
+const CPU_FREQ: CycleCounter = 44_100 * 512;

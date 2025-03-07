@@ -191,7 +191,7 @@ mod panic_handler {
 }
 
 /// Frequency of the MTIME timer tick
-const MTIME_HZ: u32 = 48_000 * 16;
+const MTIME_HZ: u32 = 44_100 * 16;
 
 /// External Interrupt Controller: IRQ pending register
 const IRQ_PENDING: *mut usize = 0xffff_ffe0 as *mut usize;
