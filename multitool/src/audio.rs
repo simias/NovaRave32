@@ -3,7 +3,7 @@ use byteorder::{LittleEndian, ReadBytesExt, WriteBytesExt};
 use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
 use rubato::{FftFixedIn, Resampler};
 use std::fs::File;
-use std::io::{ErrorKind, Write};
+use std::io::{Seek, SeekFrom, Write};
 use std::path::Path;
 use std::sync::Mutex;
 use std::sync::{
@@ -22,26 +22,67 @@ use symphonia::default::get_probe;
 pub struct AudioBuffer {
     sample_rate: u32,
     samples: Vec<i16>,
+    /// If this sample is meant to be looped, this contains the offset of the loop within `samples`
+    loop_sample: Option<u32>,
 }
 
 impl AudioBuffer {
-    pub fn from_path<P: AsRef<Path>>(audio_path: P, channel: Option<usize>) -> Result<AudioBuffer> {
+    pub fn from_path<P: AsRef<Path>>(
+        audio_path: P,
+        channel: Option<usize>,
+        start: Option<f32>,
+        preferred_sample_rate: Option<u32>,
+    ) -> Result<AudioBuffer> {
         let p = audio_path.as_ref();
 
         let mut is_nrad = false;
+        let mut is_ram = false;
 
         if let Some(ext) = p.extension().and_then(|ext| ext.to_str()) {
             if ext.to_lowercase() == "nrad" {
                 is_nrad = true;
             }
+
+            if ext.to_lowercase() == "ram" {
+                is_ram = true;
+            }
         }
 
-        let file = File::open(audio_path)?;
+        let mut file = File::open(audio_path)?;
 
-        if is_nrad {
-            AudioBuffer::from_nrad_file(file)
+        if is_ram {
+            let start = (start.unwrap_or(0.).round() * 2.) as u64;
+
+            file.seek(SeekFrom::Start(start))?;
+
+            let (samples, loop_sample) = AudioBuffer::decode_nrad_raw(file)?;
+
+            Ok(AudioBuffer {
+                samples,
+                sample_rate: preferred_sample_rate.unwrap_or(44_100),
+                loop_sample,
+            })
         } else {
-            AudioBuffer::from_file(file, channel)
+            let mut buf = if is_nrad {
+                AudioBuffer::from_nrad_file(file)
+            } else {
+                AudioBuffer::from_file(file, channel)
+            }?;
+
+            if let Some(start) = start {
+                let skip_samples = (start * buf.sample_rate as f32).round() as usize;
+
+                let skip_samples = skip_samples.min(buf.samples.len());
+
+                info!(
+                    "Dropping {} samples from the start of the track",
+                    skip_samples
+                );
+
+                buf.samples.drain(0..skip_samples);
+            }
+
+            Ok(buf)
         }
     }
 
@@ -59,16 +100,26 @@ impl AudioBuffer {
 
         let sample_rate = (u32::from(spu_step) * spu_base + (1 << 11)) >> 12;
 
+        let (samples, loop_sample) = AudioBuffer::decode_nrad_raw(audio_file)?;
+
+        Ok(AudioBuffer {
+            sample_rate,
+            samples,
+            loop_sample,
+        })
+    }
+
+    fn decode_nrad_raw(mut audio_file: File) -> Result<(Vec<i16>, Option<u32>)> {
         let mut samples = Vec::new();
 
         let mut prev_samples = [0, 0];
 
+        let mut block = 0;
+
+        let mut loop_sample = None;
+
         loop {
-            let header = match audio_file.read_u16::<LittleEndian>() {
-                Ok(h) => h,
-                Err(e) if e.kind() == ErrorKind::UnexpectedEof => break,
-                e => e?,
-            };
+            let header = audio_file.read_u16::<LittleEndian>()?;
 
             let filter = ((header >> 4) & 0xf) as usize;
             let shift = (header & 0xf) as u8;
@@ -81,16 +132,27 @@ impl AudioBuffer {
 
             let decoded = adpcm_decode_block(&encoded, prev_samples, filter, shift);
 
+            assert_eq!(decoded.len(), 28);
             prev_samples[0] = decoded[26];
             prev_samples[1] = decoded[27];
 
             samples.extend_from_slice(&decoded);
-        }
 
-        Ok(AudioBuffer {
-            sample_rate,
-            samples,
-        })
+            if header & (1 << 10) != 0 {
+                loop_sample = Some(block * 28);
+            }
+
+            if header & (1 << 8) != 0 {
+                // STOP
+                if header & (1 << 9) == 0 {
+                    // Loop not requested
+                    loop_sample = None;
+                }
+                return Ok((samples, loop_sample));
+            }
+
+            block += 1;
+        }
     }
 
     pub fn from_file(audio_file: File, channel: Option<usize>) -> Result<AudioBuffer> {
@@ -169,11 +231,16 @@ impl AudioBuffer {
         Ok(AudioBuffer {
             sample_rate,
             samples,
+            loop_sample: None,
         })
     }
 
     pub fn samples(&self) -> &[i16] {
         &self.samples
+    }
+
+    pub fn loop_sample(&self) -> Option<u32> {
+        self.loop_sample
     }
 
     pub fn sample_rate(&self) -> u32 {
@@ -202,9 +269,18 @@ impl AudioBuffer {
             .map(|&s| (s * 32768.).round().clamp(i16::MIN as f32, i16::MAX as f32) as i16)
             .collect();
 
+        let loop_sample = self.loop_sample.map(|ls| {
+            let ls = ls as u64;
+            let osr = self.sample_rate as u64;
+            let tsr = sample_rate as u64;
+
+            ((ls * tsr + (osr >> 1)) / osr) as u32
+        });
+
         Ok(AudioBuffer {
             sample_rate,
             samples: resampled,
+            loop_sample,
         })
     }
 
@@ -238,8 +314,13 @@ impl AudioBuffer {
 
                 for frame in data.chunks_mut(channels) {
                     if *index >= buf.samples.len() {
-                        finished_clone.store(true, Ordering::SeqCst);
-                        return;
+                        match buf.loop_sample {
+                            Some(ls) if (ls as usize) < buf.samples.len() => *index = ls as usize,
+                            _ => {
+                                finished_clone.store(true, Ordering::SeqCst);
+                                return;
+                            }
+                        }
                     }
                     let sample = buf.samples[*index];
                     for sample_out in frame.iter_mut() {
@@ -344,7 +425,18 @@ impl AudioBuffer {
                 }
             }
 
-            let header = ((stop as u16) << 8) | ((filter as u16) << 4) | (shift as u16);
+            let mut header = ((stop as u16) << 8) | ((filter as u16) << 4) | (shift as u16);
+            if let Some(ls) = self.loop_sample {
+                // In my experience this bit is set on all samples when a sample loops, even though
+                // it's only useful on the "end" sample?
+                header |= 1 << 9;
+
+                let loop_block = ls / 28;
+                if loop_block as usize == i {
+                    header |= 1 << 10;
+                }
+            }
+
             w.write_u16::<LittleEndian>(header)?;
 
             for e in encoded {
@@ -460,7 +552,7 @@ fn adpcm_encode_block(samples: &[i16], prev_samples: [i16; 2], filter: usize) ->
         }
     }
 
-    (res, shift)
+    (res, 12 - shift)
 }
 
 fn adpcm_decode_block(
@@ -480,7 +572,7 @@ fn adpcm_decode_block(
         for i in 0..4 {
             // Sign-extend
             let e = ((e >> (i * 4)) << 12) as i16;
-            let diff = e >> (12 - shift);
+            let diff = e >> shift;
 
             let mut predicted = 0;
 

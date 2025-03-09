@@ -75,6 +75,10 @@ enum Commands {
         /// Play the audio on the system speaker
         #[arg(long, default_value_t = false)]
         playback: bool,
+
+        /// Start offset in the input file (in seconds)
+        #[arg(long)]
+        start: Option<f32>,
     },
 }
 
@@ -114,13 +118,15 @@ fn main() -> Result<()> {
             channel,
             playback,
             output,
+            start,
         } => {
-            let mut buf = audio::AudioBuffer::from_path(input_file, channel)?;
+            let mut buf = audio::AudioBuffer::from_path(input_file, channel, start, sample_rate)?;
 
             info!(
-                "Input sample rate: {}Hz ({} samples total)",
+                "Input sample rate: {}Hz ({} samples total). Loop sample: {:?}",
                 buf.sample_rate(),
-                buf.samples().len()
+                buf.samples().len(),
+                buf.loop_sample(),
             );
 
             if let Some(sample_rate) = sample_rate {
