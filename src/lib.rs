@@ -5,6 +5,7 @@ extern crate console_error_panic_hook;
 extern crate log;
 
 mod cpu;
+mod fifo;
 mod gpu;
 mod irq;
 mod spu;
@@ -138,6 +139,11 @@ impl NoRa32 {
 
         if let Some(off) = GPU.contains(addr) {
             gpu::store_word(self, off, v);
+            return;
+        }
+
+        if let Some(off) = SPU.contains(addr) {
+            spu::store_word(self, off, v);
             return;
         }
 
@@ -328,6 +334,11 @@ const DEBUG: Range = Range {
 
 const GPU: Range = Range {
     base: 0x1001_0000,
+    len: 1024,
+};
+
+const SPU: Range = Range {
+    base: 0x1002_0000,
     len: 1024,
 };
 

@@ -26,7 +26,6 @@ pub fn main() {
     // MAT4: Model matrix
     // MAT5: Normal matrix
     // MAT6: Custom
-    // MAT7: multitool model loading
     let _draw_mat = MAT0;
     let mvp_mat = MAT1;
     let p_mat = MAT2;
@@ -80,16 +79,17 @@ pub fn main() {
     }
 }
 
-fn send_model(model: &[u8]) {
-    for b in model.chunks_exact(4) {
-        let w = u32::from_le_bytes([b[0], b[1], b[2], b[3]]);
-        send_to_gpu(w);
-    }
-}
-
 fn sub_task() {
+    let key_noise = include_bytes!("assets/key.nrad");
+
+    spu_upload(0, &key_noise[8..]);
+    spu_volume_main(5000, 5000);
+
     info!("Sub-task launched");
     loop {
+        unsafe {
+            *SPU_VOICE_ON = 1;
+        }
         info!("Sub-task sleeping 3s..");
         sleep(Duration::from_secs(3));
         info!("Sub-task done sleeping");
@@ -102,3 +102,38 @@ fn one_shot_task() {
     sleep(Duration::from_secs(1));
     info!("One-shot-task ended");
 }
+
+fn spu_upload(addr: u16, d: &[u8]) {
+    assert_eq!(addr & 3, 0, "SPU addr misaligned");
+    unsafe {
+        *SPU_RAM_ADDR = addr as u32;
+    }
+
+    for b in d.chunks_exact(4) {
+        let w = u32::from_le_bytes([b[0], b[1], b[2], b[3]]);
+        unsafe {
+            *SPU_RAM_W = w;
+        }
+    }
+}
+
+fn spu_volume_main(vleft: i16, vright: i16) {
+    let v = ((vleft as u32) << 16) | (vright as u32);
+
+    unsafe {
+        *SPU_VOLUME_MAIN = v;
+    }
+}
+
+fn send_model(model: &[u8]) {
+    for b in model.chunks_exact(4) {
+        let w = u32::from_le_bytes([b[0], b[1], b[2], b[3]]);
+        send_to_gpu(w);
+    }
+}
+
+const SPU_BASE: u32 = 0x1002_0000;
+const SPU_VOLUME_MAIN: *mut u32 = SPU_BASE as *mut u32;
+const SPU_VOICE_ON: *mut u32 = (SPU_BASE + 4) as *mut u32;
+const SPU_RAM_ADDR: *mut u32 = (SPU_BASE + 4 * 4) as *mut u32;
+const SPU_RAM_W: *mut u32 = (SPU_BASE + 5 * 4) as *mut u32;

@@ -24,7 +24,7 @@ class NoRaAudioProcessor extends AudioWorkletProcessor {
 
             for (let i = 0; i < nsamples; i++) {
                 // Convert from i16 to float
-                this.buffer[this.writeIndex] = samples[i] / 627680.0;
+                this.buffer[this.writeIndex] = samples[i] / 32768.0;
                 this.writeIndex = (this.writeIndex + 1) % this.buffer.length;
             }
 

@@ -318,7 +318,10 @@ impl AudioBuffer {
                             Some(ls) if (ls as usize) < buf.samples.len() => *index = ls as usize,
                             _ => {
                                 finished_clone.store(true, Ordering::SeqCst);
-                                return;
+                                for sample_out in frame.iter_mut() {
+                                    *sample_out = 0;
+                                }
+                                continue
                             }
                         }
                     }
@@ -338,6 +341,7 @@ impl AudioBuffer {
         while !finished.load(Ordering::SeqCst) {
             thread::sleep(Duration::from_millis(100));
         }
+        thread::sleep(Duration::from_millis(300));
 
         Ok(())
     }
@@ -571,16 +575,16 @@ fn adpcm_decode_block(
     for e in encoded {
         for i in 0..4 {
             // Sign-extend
-            let e = ((e >> (i * 4)) << 12) as i16;
-            let diff = e >> shift;
+            let mut diff = (e << (12 - i * 4) & 0xf000) as i16;
 
-            let mut predicted = 0;
+            diff >>= shift;
 
-            predicted += (ps[0] * wn) >> 6;
-            predicted += (ps[1] * wp) >> 6;
-            predicted += i32::from(diff);
+            let mut sample = i32::from(diff);
 
-            let sample = predicted.clamp(i32::from(i16::MIN), i32::from(i16::MAX)) as i16;
+            sample += (ps[0] * wn) >> 6;
+            sample += (ps[1] * wp) >> 6;
+
+            let sample = sample.clamp(i32::from(i16::MIN), i32::from(i16::MAX)) as i16;
 
             res.push(sample);
 
