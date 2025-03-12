@@ -167,29 +167,54 @@ pub fn run_voice_decoder(m: &mut NoRa32, voice: usize) {
     }
 }
 
-pub fn store_word(m: &mut NoRa32, addr: u32, v: u32) {
+pub fn store_word(m: &mut NoRa32, addr: u32, val: u32) {
     run(m);
 
     match addr >> 2 {
         0 => {
-            m.spu.volume_left = (v >> 16) as i16;
-            m.spu.volume_right = v as i16;
+            m.spu.volume_left = (val >> 16) as i16;
+            m.spu.volume_right = val as i16;
         }
         1 => {
             for voice in 0..24 {
-                if v & (1 << voice) != 0 {
+                if val & (1 << voice) != 0 {
                     m.spu.voices[voice].start();
                 }
             }
 
-            m.spu.voice_on |= v;
+            m.spu.voice_on |= val;
         }
-        4 => m.spu.ram_ptr = (addr >> 1) & !1,
+        4 => {
+            m.spu.ram_ptr = (val >> 1) & !1;
+        }
+
         5 => {
-            m.spu.ram_store(v as u16);
-            m.spu.ram_store((v >> 16) as u16);
+            m.spu.ram_store(val as u16);
+            m.spu.ram_store((val >> 16) as u16);
         }
-        n => panic!("Unknown SPU register {}", n),
+        0x40.. => {
+            let voice = (((addr - 0x100) >> 5) & 0x1f) as usize;
+            if voice >= 24 {
+                panic!("Unknown voice {}", voice);
+            }
+
+            let v = &mut m.spu.voices[voice];
+
+            match (addr >> 2) & 7 {
+                0 => {
+                    v.step_length = (val & 0x3fff) as u16;
+                }
+                1 => {
+                    v.start_index = (val << 3) % SPU_RAM_SIZE as u32;
+                }
+                2 => {
+                    v.volume_left = (val >> 16) as i16;
+                    v.volume_right = val as i16;
+                }
+                n => panic!("Unknown SPU register {}.{}", voice, n),
+            }
+        }
+        n => panic!("Unknown SPU register {:x}", n),
     }
 }
 
@@ -240,10 +265,6 @@ impl Voice {
         self.cur_index = self.start_index;
         self.phase = 0;
         self.block_header = AdpcmHeader(0);
-
-        self.step_length = 0x3a1;
-        self.volume_left = i16::MAX;
-        self.volume_right = i16::MAX;
     }
 
     fn inc_index(&mut self) {

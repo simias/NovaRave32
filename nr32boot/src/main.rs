@@ -81,17 +81,34 @@ pub fn main() {
 
 fn sub_task() {
     let key_noise = include_bytes!("assets/key.nrad");
-
     spu_upload(0, &key_noise[8..]);
-    spu_volume_main(5000, 5000);
+    // let sram = include_bytes!("/tmp/spu.ram");
+    // spu_upload(0, sram);
+
+    spu_main_volume(i16::MAX, i16::MAX);
+    spu_voice_volume(0, 17122, 17122);
+    spu_voice_start_block(0, 0);
+    spu_voice_step(0, 0x3a1);
+
+    spu_voice_volume(1, 0, 32766);
+    spu_voice_start_block(1, 0x30a0 >> 3);
+    spu_voice_step(1, 1031);
+
+    spu_voice_volume(2, 4920, 0);
+    spu_voice_start_block(2, 0x30a0 >> 3);
+    spu_voice_step(2, 2048);
+
+    spu_voice_volume(3, 0, 2856);
+    spu_voice_start_block(3, 0x30a0 >> 3);
+    spu_voice_step(3, 2062);
 
     info!("Sub-task launched");
     loop {
         unsafe {
-            *SPU_VOICE_ON = 1;
+            *SPU_VOICE_ON = 0x1;
         }
         info!("Sub-task sleeping 3s..");
-        sleep(Duration::from_secs(3));
+        sleep(Duration::from_secs(2));
         info!("Sub-task done sleeping");
         spawn_task(one_shot_task, -1);
     }
@@ -101,6 +118,13 @@ fn one_shot_task() {
     info!("One-shot-task launched");
     sleep(Duration::from_secs(1));
     info!("One-shot-task ended");
+}
+
+fn send_model(model: &[u8]) {
+    for b in model.chunks_exact(4) {
+        let w = u32::from_le_bytes([b[0], b[1], b[2], b[3]]);
+        send_to_gpu(w);
+    }
 }
 
 fn spu_upload(addr: u16, d: &[u8]) {
@@ -117,7 +141,7 @@ fn spu_upload(addr: u16, d: &[u8]) {
     }
 }
 
-fn spu_volume_main(vleft: i16, vright: i16) {
+fn spu_main_volume(vleft: i16, vright: i16) {
     let v = ((vleft as u32) << 16) | (vright as u32);
 
     unsafe {
@@ -125,10 +149,28 @@ fn spu_volume_main(vleft: i16, vright: i16) {
     }
 }
 
-fn send_model(model: &[u8]) {
-    for b in model.chunks_exact(4) {
-        let w = u32::from_le_bytes([b[0], b[1], b[2], b[3]]);
-        send_to_gpu(w);
+fn spu_voice_volume(voice: u32, vleft: i16, vright: i16) {
+    let v = ((vleft as u32) << 16) | (vright as u32);
+    let p = (SPU_VOICE_VOLUME + voice * SPU_VOICE_OFF) as *mut u32;
+
+    unsafe {
+        *p = v;
+    }
+}
+
+fn spu_voice_step(voice: u32, step: u16) {
+    let p = (SPU_VOICE_STEP + voice * SPU_VOICE_OFF) as *mut u32;
+
+    unsafe {
+        *p = step as u32;
+    }
+}
+
+fn spu_voice_start_block(voice: u32, addr: u32) {
+    let p = (SPU_VOICE_START_BLOCK + voice * SPU_VOICE_OFF) as *mut u32;
+
+    unsafe {
+        *p = addr;
     }
 }
 
@@ -137,3 +179,10 @@ const SPU_VOLUME_MAIN: *mut u32 = SPU_BASE as *mut u32;
 const SPU_VOICE_ON: *mut u32 = (SPU_BASE + 4) as *mut u32;
 const SPU_RAM_ADDR: *mut u32 = (SPU_BASE + 4 * 4) as *mut u32;
 const SPU_RAM_W: *mut u32 = (SPU_BASE + 5 * 4) as *mut u32;
+
+const SPU_VOICE_BASE: u32 = SPU_BASE + 0x100;
+const SPU_VOICE_OFF: u32 = 0x20;
+
+const SPU_VOICE_STEP: u32 = SPU_VOICE_BASE;
+const SPU_VOICE_START_BLOCK: u32 = SPU_VOICE_BASE + 4;
+const SPU_VOICE_VOLUME: u32 = SPU_VOICE_BASE + 2 * 4;
