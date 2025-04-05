@@ -118,10 +118,10 @@ export class Emulator {
         const matdata = new Float32Array(wasm.memory.buffer, mat_f32_ptr, mat_count * 16);
 
         gl.bindBuffer(gl.ARRAY_BUFFER, i16Buffer);
-        gl.bufferData(gl.ARRAY_BUFFER, i16Data, gl.DYNAMIC_DRAW);
+        gl.bufferData(gl.ARRAY_BUFFER, i16Data, gl.STREAM_DRAW);
 
         gl.bindBuffer(gl.ARRAY_BUFFER, u8Buffer);
-        gl.bufferData(gl.ARRAY_BUFFER, u8Data, gl.DYNAMIC_DRAW);
+        gl.bufferData(gl.ARRAY_BUFFER, u8Data, gl.STREAM_DRAW);
 
         gl.uniformMatrix4fv(projectionsLoc, false, matdata);
 
