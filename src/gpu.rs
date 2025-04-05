@@ -1,4 +1,4 @@
-use crate::{displayFramebuffer, drawTriangles3D, irq, sync, CycleCounter, NoRa32, CPU_FREQ};
+use crate::{irq, sync, CycleCounter, NoRa32, CPU_FREQ};
 use glam::Mat4;
 use std::fmt;
 
@@ -190,13 +190,8 @@ fn do_draw(m: &mut NoRa32) {
         return;
     }
 
-    drawTriangles3D(
-        m.gpu.matrices_f32.as_ptr(),
-        m.gpu.matrices_f32.len(),
-        m.gpu.attribs_i16.as_ptr(),
-        m.gpu.attribs_u8.as_ptr(),
-        m.gpu.attribs_i16.len() / 3,
-    );
+    m.callbacks
+        .draw_triangles(&m.gpu.matrices_f32, &m.gpu.attribs_i16, &m.gpu.attribs_u8);
 
     m.gpu.attribs_i16.clear();
     m.gpu.attribs_u8.clear();
@@ -218,7 +213,7 @@ fn handle_new_command(m: &mut NoRa32, cmd: u32) -> CommandState {
         // Draw end
         0x02 => {
             do_draw(m);
-            displayFramebuffer();
+            m.callbacks.display_framebuffer();
             if m.gpu.raster_state == RasterState::Drawing {
                 do_draw(m);
                 m.gpu.raster_state = RasterState::Idle;

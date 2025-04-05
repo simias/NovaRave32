@@ -13,6 +13,7 @@ mod sync;
 mod systimer;
 
 use cfg_if::cfg_if;
+use js_sys::{Array, Function};
 use std::panic;
 use wasm_bindgen::prelude::*;
 
@@ -20,24 +21,6 @@ use wasm_bindgen::prelude::*;
 fn main() {
     panic::set_hook(Box::new(console_error_panic_hook::hook));
     init_log();
-}
-
-#[wasm_bindgen]
-extern "C" {
-    /// Function used to draw 3D primitives
-    fn drawTriangles3D(
-        mat_f32_ptr: *const [[f32; 4]; 4],
-        mat_count: usize,
-        i16_ptr: *const i16,
-        u8_ptr: *const u8,
-        count: usize,
-    );
-
-    /// Called when a new frame should be presented
-    fn displayFramebuffer();
-
-    /// Called to feed interleaved stereo audio samples to the frontend
-    fn outputAudioSamples(samples_i16_ptr: *const i16, sample_count: usize);
 }
 
 #[wasm_bindgen]
@@ -58,6 +41,8 @@ pub struct NoRa32 {
     cycle_counter: CycleCounter,
     /// Incremented by the GPU every time a new frame is generated
     frame_counter: u32,
+    /// Callbacks for the frontend
+    callbacks: Callbacks,
 }
 
 #[wasm_bindgen]
@@ -77,7 +62,23 @@ impl NoRa32 {
             run: true,
             cycle_counter: 0,
             frame_counter: 0,
+            callbacks: Default::default(),
         }
+    }
+
+    #[wasm_bindgen]
+    pub fn on_draw_triangles(&mut self, cb: Function) {
+        self.callbacks.js_draw_triangles = Some(cb);
+    }
+
+    #[wasm_bindgen]
+    pub fn on_display_framebuffer(&mut self, cb: Function) {
+        self.callbacks.js_display_framebuffer = Some(cb);
+    }
+
+    #[wasm_bindgen]
+    pub fn on_output_audio_samples(&mut self, cb: Function) {
+        self.callbacks.js_output_audio_samples = Some(cb);
     }
 
     #[wasm_bindgen]
@@ -118,7 +119,7 @@ impl NoRa32 {
 
         spu::run(self);
         let audio_samples = self.spu.samples();
-        outputAudioSamples(audio_samples.as_ptr(), audio_samples.len());
+        self.callbacks.output_audio_samples(audio_samples);
         self.spu.clear_samples();
 
         sync::rebase_counters(self);
@@ -297,6 +298,53 @@ impl NoRa32 {
 impl Default for NoRa32 {
     fn default() -> Self {
         Self::new()
+    }
+}
+
+/// Various callbacks to send data to the frontend
+#[derive(Default)]
+struct Callbacks {
+    js_draw_triangles: Option<Function>,
+    js_display_framebuffer: Option<Function>,
+    js_output_audio_samples: Option<Function>,
+}
+
+impl Callbacks {
+    fn draw_triangles(
+        &self,
+        matrices_f32: &[[[f32; 4]; 4]],
+        attribs_i16: &[i16],
+        attribs_u8: &[u8],
+    ) {
+        if let Some(ref js_draw_triangles) = self.js_draw_triangles {
+            let args = Array::new_with_length(5);
+
+            args.set(0, JsValue::from(matrices_f32.as_ptr()));
+            args.set(1, JsValue::from(matrices_f32.len()));
+            args.set(2, JsValue::from(attribs_i16.as_ptr()));
+            args.set(3, JsValue::from(attribs_u8.as_ptr()));
+            args.set(4, JsValue::from(attribs_i16.len() / 3));
+
+            js_draw_triangles.apply(&JsValue::NULL, &args).unwrap();
+        }
+    }
+
+    fn display_framebuffer(&self) {
+        if let Some(ref js_display_framebuffer) = self.js_display_framebuffer {
+            js_display_framebuffer.call0(&JsValue::NULL).unwrap();
+        }
+    }
+
+    fn output_audio_samples(&self, audio_samples: &[i16]) {
+        if let Some(ref js_output_audio_samples) = self.js_output_audio_samples {
+            js_output_audio_samples
+                .call2(
+                    &JsValue::NULL,
+                    &JsValue::from(audio_samples.as_ptr()),
+                    &JsValue::from(audio_samples.len()),
+                )
+                .unwrap();
+        }
     }
 }
 

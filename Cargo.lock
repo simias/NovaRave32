@@ -64,6 +64,7 @@ dependencies = [
  "console_error_panic_hook",
  "console_log",
  "glam",
+ "js-sys",
  "log",
  "static_assertions",
  "wasm-bindgen",
