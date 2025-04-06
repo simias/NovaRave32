@@ -1,5 +1,6 @@
 {
   "devDependencies": {
+    "@types/audioworklet": "^0.0.72",
     "@typescript-eslint/eslint-plugin": "^8.29.0",
     "@typescript-eslint/parser": "^8.29.0",
     "eslint": "^9.24.0",

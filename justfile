@@ -29,6 +29,8 @@ lint:
     cd nr32-rt && cargo clippy
     cd nr32-web && npx eslint
 
-web-dev: build
+web-dev:
+    just build-wasm
+    just build-rom
     cd nr32-web && npm run dev
 
