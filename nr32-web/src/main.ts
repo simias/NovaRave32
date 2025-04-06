@@ -1,6 +1,7 @@
 import './style.css';
 
 import { Emulator } from './emulator.ts';
+import { SampleFifo } from './shared-fifo.ts';
 import { redirectConsole } from './console.ts';
 
 import workletUrl from './audio-worklet.ts?worker&url';
@@ -56,6 +57,10 @@ async function main() {
           await audioContext.suspend();
           audioContext = undefined;
         }
+        emu.m.on_output_audio_samples((samples_i16_ptr: number, count: number) => {
+          void samples_i16_ptr;
+          void count;
+        });
       } else {
         mute_toggle.textContent = 'Mute';
         clearInterval(frameInterval);
@@ -66,10 +71,31 @@ async function main() {
         audioContext = new AudioContext({ sampleRate: 44100 });
         await audioContext.audioWorklet.addModule(workletUrl);
 
+        const sampleFifo = SampleFifo.with_capacity((44100 * 2) / 5);
+
         const audioNode = new AudioWorkletNode(audioContext, 'nora32-audio', {
+          numberOfInputs: 0,
+          numberOfOutputs: 1,
           outputChannelCount: [2],
+          processorOptions: {
+            fifoBuffer: sampleFifo.fifoBuffer,
+            indexBuffer: sampleFifo.indexBuffer,
+            capacity: sampleFifo.capacity,
+          },
         });
         audioNode.connect(audioContext.destination);
+
+        emu.m.on_output_audio_samples((samples_i16_ptr: number, count: number) => {
+          const samples = new Int16Array(emu.wasm.memory.buffer, samples_i16_ptr, count);
+
+          sampleFifo.loadI16Samples(samples);
+        });
+
+        audioNode.port.onmessage = (event) => {
+          if (event.data === 'need_samples') {
+            emu.runFrame();
+          }
+        };
 
         audioContext.resume();
 
