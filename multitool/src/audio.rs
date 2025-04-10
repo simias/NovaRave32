@@ -133,8 +133,8 @@ impl AudioBuffer {
             let decoded = adpcm_decode_block(&encoded, prev_samples, filter, shift);
 
             assert_eq!(decoded.len(), 28);
-            prev_samples[0] = decoded[26];
-            prev_samples[1] = decoded[27];
+            prev_samples[0] = decoded[27];
+            prev_samples[1] = decoded[26];
 
             samples.extend_from_slice(&decoded);
 
@@ -387,8 +387,6 @@ impl AudioBuffer {
         for (i, block) in self.samples.chunks(block_len).enumerate() {
             let stop = (i + 1) == nblocks;
 
-            let _filter = 0;
-
             let mut samples: Vec<i16> = block.to_vec();
 
             // Make sure the last block is full by copying the last sample as padding
@@ -449,8 +447,8 @@ impl AudioBuffer {
 
             total_error += error;
 
-            prev_samples[0] = decoded[block_len - 2];
-            prev_samples[1] = decoded[block_len - 1];
+            prev_samples[0] = decoded[block_len - 1];
+            prev_samples[1] = decoded[block_len - 2];
         }
 
         info!(
@@ -487,20 +485,16 @@ fn adpcm_encode_block(samples: &[i16], prev_samples: [i16; 2], filter: usize) ->
 
         let mut predicted = 0;
 
-        predicted += (ps[0] * wn) >> 6;
-        predicted += (ps[1] * wp) >> 6;
+        predicted += (ps[0] * wp) >> 6;
+        predicted += (ps[1] * wn) >> 6;
 
         let diff = s - predicted;
-
-        if diff > diff_max {
-            diff_max = diff;
-        }
 
         diff_max = diff_max.max(diff);
         diff_min = diff_min.min(diff);
 
-        ps[0] = ps[1];
-        ps[1] = s;
+        ps[1] = ps[0];
+        ps[0] = s;
     }
 
     // Note that this code is somewhat sub-optimal because the choice of shift value will change
@@ -533,8 +527,8 @@ fn adpcm_encode_block(samples: &[i16], prev_samples: [i16; 2], filter: usize) ->
 
         let mut predicted = 0;
 
-        predicted += (ps[0] * wn) >> 6;
-        predicted += (ps[1] * wp) >> 6;
+        predicted += (ps[0] * wp) >> 6;
+        predicted += (ps[1] * wn) >> 6;
 
         let diff = (s - predicted) >> shift;
 
@@ -543,8 +537,8 @@ fn adpcm_encode_block(samples: &[i16], prev_samples: [i16; 2], filter: usize) ->
         predicted += diff << shift;
         predicted = predicted.clamp(i32::from(i16::MIN), i32::from(i16::MAX));
 
-        ps[0] = ps[1];
-        ps[1] = predicted;
+        ps[1] = ps[0];
+        ps[0] = predicted;
 
         let encoded = (diff as u16) & 0xf;
 
@@ -581,15 +575,15 @@ fn adpcm_decode_block(
 
             let mut sample = i32::from(diff);
 
-            sample += (ps[0] * wn) >> 6;
-            sample += (ps[1] * wp) >> 6;
+            sample += (ps[0] * wp) >> 6;
+            sample += (ps[1] * wn) >> 6;
 
             let sample = sample.clamp(i32::from(i16::MIN), i32::from(i16::MAX)) as i16;
 
             res.push(sample);
 
-            ps[0] = ps[1];
-            ps[1] = sample as i32;
+            ps[1] = ps[0];
+            ps[0] = sample as i32;
         }
     }
 
@@ -611,4 +605,4 @@ fn adpcm_error(source: &[i16], decoded: &[i16]) -> u32 {
 
 /// Weights used for ADPCM encoding. The first weight is applied to the previous sample, the 2nd to
 /// the penultimate
-const FILTER_WEIGHTS: [(i8, i8); 5] = [(0, 0), (60, 0), (115, -52), (98, -55), (112, -60)];
+const FILTER_WEIGHTS: [(i8, i8); 5] = [(0, 0), (60, 0), (115, -52), (98, -55), (122, -60)];

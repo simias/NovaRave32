@@ -93,7 +93,9 @@ async function main() {
 
         audioNode.port.onmessage = (event) => {
           if (event.data === 'need_samples') {
-            emu.runFrame();
+            requestAnimationFrame(() => {
+              emu.runFrame();
+            });
           }
         };
 

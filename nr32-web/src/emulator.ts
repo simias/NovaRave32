@@ -144,12 +144,6 @@ export class Emulator {
       // Rebind the normal context for the next frame
       noRaBind();
     });
-
-    this.m.on_output_audio_samples((samples_i16_ptr: number, count: number) => {
-      void samples_i16_ptr;
-      void count;
-      // TODO
-    });
   }
 
   static async build(canvas: HTMLCanvasElement): Promise<Emulator> {

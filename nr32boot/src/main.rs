@@ -80,27 +80,16 @@ pub fn main() {
 }
 
 fn sub_task() {
-    let key_noise = include_bytes!("assets/key.nrad");
-    spu_upload(0, &key_noise[8..]);
-    // let sram = include_bytes!("/tmp/spu.ram");
-    // spu_upload(0, sram);
+    let note = include_bytes!("assets/A440.nrad");
 
-    spu_main_volume(i16::MAX, i16::MAX);
-    spu_voice_volume(0, 17122, 17122);
+    let step = nrad_step(note);
+
+    nrad_upload(0, note);
+
+    spu_main_volume(i16::MAX / 2, i16::MAX / 2);
+    spu_voice_volume(0, i16::MAX, i16::MAX);
     spu_voice_start_block(0, 0);
-    spu_voice_step(0, 0x3a1);
-
-    spu_voice_volume(1, 0, 32766);
-    spu_voice_start_block(1, 0x30a0 >> 3);
-    spu_voice_step(1, 1031);
-
-    spu_voice_volume(2, 4920, 0);
-    spu_voice_start_block(2, 0x30a0 >> 3);
-    spu_voice_step(2, 2048);
-
-    spu_voice_volume(3, 0, 2856);
-    spu_voice_start_block(3, 0x30a0 >> 3);
-    spu_voice_step(3, 2062);
+    spu_voice_step(0, step);
 
     info!("Sub-task launched");
     loop {
@@ -108,7 +97,7 @@ fn sub_task() {
             *SPU_VOICE_ON = 0x1;
         }
         info!("Sub-task sleeping 3s..");
-        sleep(Duration::from_secs(2));
+        sleep(Duration::from_secs(5));
         info!("Sub-task done sleeping");
         spawn_task(one_shot_task, -1);
     }
@@ -172,6 +161,17 @@ fn spu_voice_start_block(voice: u32, addr: u32) {
     unsafe {
         *p = addr;
     }
+}
+
+fn nrad_step(nrad_buf: &[u8]) -> u16 {
+    let step_lo = u16::from(nrad_buf[6]);
+    let step_hi = u16::from(nrad_buf[7]) << 8;
+
+    step_lo | step_hi
+}
+
+fn nrad_upload(addr: u16, nrad_buf: &[u8]) {
+    spu_upload(addr, &nrad_buf[8..]);
 }
 
 const SPU_BASE: u32 = 0x1002_0000;
