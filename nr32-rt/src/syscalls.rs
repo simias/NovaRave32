@@ -136,7 +136,12 @@ impl ThreadBuilder {
 pub const SYS_SLEEP: usize = 0x01;
 /// Wait for the event described in a0
 pub const SYS_WAIT_EVENT: usize = 0x02;
-/// Spawn a thread with entry function in a0 and prio in a'
+/// Spawn a thread
+///
+/// - a0: thread entry point
+/// - a1: thread data
+/// - a2: priority
+/// - a3: stack size
 pub const SYS_SPAWN_TASK: usize = 0x03;
 /// Kills the current thread
 pub const SYS_EXIT: usize = 0x04;

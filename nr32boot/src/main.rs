@@ -18,12 +18,6 @@ pub fn main() {
     info!("Task is running!");
 
     start_audio();
-    // spawn_task(audio_1, 1);
-    // spawn_task(audio_2, 1);
-
-    // ThreadBuilder::new().stack_size(1024).priority(1).spawn(|| {
-    //     audio_2();
-    // });
 
     // MAT0: Draw matrix
     // MAT1: MVP matrix
@@ -98,7 +92,6 @@ fn start_audio() {
     spu_main_volume(i16::MAX / 2, i16::MAX / 2);
     spu_voice_volume(0, i16::MAX, i16::MAX);
     spu_voice_volume(1, i16::MAX, i16::MAX);
-    spu_voice_step(0, a_step as u16);
 
     spu_voice_start_block(0, 0);
     spu_voice_start_block(1, 0);
