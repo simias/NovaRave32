@@ -196,7 +196,7 @@ _task_runner:
     .cfi_startproc
     .cfi_undefined ra
 
-    jalr    a0
+    jalr    a1
     li      a7, 0x04
     ecall
 

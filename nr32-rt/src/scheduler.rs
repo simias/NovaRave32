@@ -32,19 +32,22 @@ impl Scheduler {
 
         // Create the idle task.
         let idle_task = unsafe { core::mem::transmute::<usize, fn()>(_idle_task as usize) };
-        self.spawn_task(idle_task as usize, i32::MIN, 0);
+        self.spawn_task(idle_task as usize, 0, i32::MIN, 0);
         self.switch_to_task(0);
     }
 
-    pub fn spawn_task(&mut self, entry: usize, prio: i32, stack_size: usize) {
+    pub fn spawn_task(&mut self, entry: usize, data: usize, prio: i32, stack_size: usize) {
         let (stack, sp) = stack_alloc(stack_size + BANKED_REGISTER_LEN);
-        // Put function in banked a0
+        // Put function in banked a1 and data in banked a0
         unsafe {
             let p = sp - BANKED_REGISTER_LEN + 23 * 4;
 
             let p = p as *mut usize;
 
-            *p = entry;
+            // A0
+            *p = data;
+            // A1
+            *(p.offset(-1)) = entry;
         };
 
         let new_task = Task {
@@ -226,11 +229,15 @@ impl Scheduler {
         riscv::register::mscratch::write(task.sp);
         riscv::register::mepc::write(task.ra);
 
-        let mpp_user = riscv::register::mstatus::MPP::User;
+        // I'd prefer to use MPP::User for the task threads but I can't do that because we share
+        // the allocator and it needs to access mstatus in the critical section.
+        //
+        // We could work around the issue by having a separate allocator for tasks, but that's
+        // probably overkill.
+        let mpp_ret = riscv::register::mstatus::MPP::Machine;
 
         unsafe {
-            // Switch to user mode upon mret
-            riscv::register::mstatus::set_mpp(mpp_user);
+            riscv::register::mstatus::set_mpp(mpp_ret);
             // Enable interrupts upon mret
             riscv::register::mstatus::set_mpie();
         }

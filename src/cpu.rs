@@ -143,7 +143,10 @@ impl Cpu {
         let read_only = ((csr >> 10) & 3) == 0b11;
 
         if mode_min > self.mode as u16 {
-            panic!("Attempt to access CSR {:x} in {:?} mode", csr, self.mode);
+            panic!(
+                "Attempt to access CSR {:x} in {:?} mode @ {:x}",
+                csr, self.mode, self.pc
+            );
         }
 
         if read_only && (and_mask != !0 || or_mask != 0) {

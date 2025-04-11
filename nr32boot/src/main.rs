@@ -11,13 +11,19 @@ use nr32_rt::math::{
     matrix::{MAT0, MAT1, MAT2, MAT3, MAT4, MAT5, MAT7},
     Angle, Fp32,
 };
-use nr32_rt::syscalls::{sleep, spawn_task, wait_for_vsync};
+use nr32_rt::syscalls::{sleep, wait_for_vsync, ThreadBuilder};
 
 #[export_name = "nr32_main"]
 pub fn main() {
     info!("Task is running!");
 
-    spawn_task(sub_task, 1);
+    start_audio();
+    // spawn_task(audio_1, 1);
+    // spawn_task(audio_2, 1);
+
+    // ThreadBuilder::new().stack_size(1024).priority(1).spawn(|| {
+    //     audio_2();
+    // });
 
     // MAT0: Draw matrix
     // MAT1: MVP matrix
@@ -79,34 +85,67 @@ pub fn main() {
     }
 }
 
-fn sub_task() {
+/// 12th root of 2
+const SEMITONE_RATIO: Fp32 = Fp32::from_f32(1.0594631);
+
+fn start_audio() {
     let note = include_bytes!("assets/A440.nrad");
 
-    let step = nrad_step(note);
+    let a_step = nrad_step(note) as i32;
 
     nrad_upload(0, note);
 
     spu_main_volume(i16::MAX / 2, i16::MAX / 2);
     spu_voice_volume(0, i16::MAX, i16::MAX);
+    spu_voice_volume(1, i16::MAX, i16::MAX);
+    spu_voice_step(0, a_step as u16);
+
     spu_voice_start_block(0, 0);
-    spu_voice_step(0, step);
+    spu_voice_start_block(1, 0);
 
-    info!("Sub-task launched");
-    loop {
-        unsafe {
-            *SPU_VOICE_ON = 0x1;
-        }
-        info!("Sub-task sleeping 3s..");
-        sleep(Duration::from_secs(5));
-        info!("Sub-task done sleeping");
-        spawn_task(one_shot_task, -1);
-    }
-}
+    ThreadBuilder::new()
+        .stack_size(1024)
+        .priority(1)
+        .spawn(move || {
+            let mut pitch = Fp32::ONE;
 
-fn one_shot_task() {
-    info!("One-shot-task launched");
-    sleep(Duration::from_secs(1));
-    info!("One-shot-task ended");
+            loop {
+                pitch *= SEMITONE_RATIO;
+
+                if pitch > 4.into() {
+                    pitch = Fp32::ONE;
+                }
+
+                spu_voice_step(0, (pitch * a_step).round() as u16);
+
+                unsafe {
+                    *SPU_VOICE_ON = 0x1;
+                }
+                sleep(Duration::from_millis(500));
+            }
+        });
+
+    ThreadBuilder::new()
+        .stack_size(1024)
+        .priority(1)
+        .spawn(move || {
+            let mut pitch = Fp32::ONE;
+
+            loop {
+                pitch *= SEMITONE_RATIO;
+
+                if pitch > 4.into() {
+                    pitch = Fp32::ONE;
+                }
+
+                spu_voice_step(1, (pitch * a_step).round() as u16);
+
+                unsafe {
+                    *SPU_VOICE_ON = 1 << 1;
+                }
+                sleep(Duration::from_millis(490));
+            }
+        });
 }
 
 fn send_model(model: &[u8]) {

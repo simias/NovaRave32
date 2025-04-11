@@ -35,7 +35,7 @@ pub fn rust_start() {
 
     let mut sched = scheduler::get();
     sched.start();
-    sched.spawn_task(nr32_main as usize, 0, TASK_STACK_SIZE);
+    sched.spawn_task(nr32_main as usize, 0, 0, TASK_STACK_SIZE);
     sched.schedule();
 }
 
@@ -54,6 +54,8 @@ pub fn rust_trap() {
         (true, 11) => handle_irqs(),
         // ECALL from user mode
         (false, 8) => handle_ecall(),
+        // ECALL from machine mode
+        (false, 11) => handle_ecall(),
         _ => panic!("Unhandled trap {:x?}", cause),
     }
 }
@@ -99,6 +101,10 @@ fn handle_ecall() {
     let arg0 = task_reg(10);
     /* a1 */
     let arg1 = task_reg(11);
+    /* a2 */
+    let arg2 = task_reg(12);
+    /* a3 */
+    let arg3 = task_reg(13);
 
     let mut sched = scheduler::get();
     let ret = match code {
@@ -112,10 +118,14 @@ fn handle_ecall() {
         syscalls::SYS_WAIT_EVENT => sched.wait_event_current_task(arg0),
         syscalls::SYS_SPAWN_TASK => {
             let entry = arg0;
-            let prio = arg1 as i32;
+            let data = arg1;
+            let prio = arg2 as i32;
+            let stack_size = arg3;
 
-            sched.spawn_task(entry, prio, TASK_STACK_SIZE);
-            0
+            sched.spawn_task(entry, data, prio, stack_size);
+            // We have to return here because spawn_task will have switched to the new task, so it
+            // makes no sense to set A0.
+            return;
         }
         syscalls::SYS_EXIT => {
             sched.exit_current_task();

@@ -1,5 +1,5 @@
 use core::fmt;
-use core::ops::{Add, AddAssign, Div, Mul, Neg, Shl, Shr, Sub};
+use core::ops::{Add, AddAssign, Div, DivAssign, Mul, MulAssign, Neg, Shl, Shr, Sub};
 
 /// 32bit s16.16 fixed point
 #[derive(Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Debug)]
@@ -16,11 +16,31 @@ impl Fp32 {
     const F32_MUL: f32 = (1u32 << Fp32::FP_SHIFT) as f32;
 
     pub const fn ratio(a: i32, b: i32) -> Fp32 {
-        Fp32((a << Self::FP_SHIFT) / b)
+        Fp32((a << Fp32::FP_SHIFT) / b)
     }
 
     pub const fn from_s16_16(v: i32) -> Fp32 {
         Fp32(v)
+    }
+
+    pub const fn from_f32(v: f32) -> Fp32 {
+        Fp32((v * Fp32::F32_MUL) as i32)
+    }
+
+    pub const fn trunc(self) -> i32 {
+        self.0 >> Fp32::FP_SHIFT
+    }
+
+    pub const fn fract(self) -> Fp32 {
+        let s = 32 - Fp32::FP_SHIFT;
+
+        Fp32((self.0 << s) >> s)
+    }
+
+    pub const fn round(self) -> i32 {
+        let v = self.0 >> (Fp32::FP_SHIFT - 1);
+
+        (if v >= 0 { v + 1 } else { v - 1 }) >> 1
     }
 
     pub const fn to_s16_16(self) -> i32 {
@@ -143,7 +163,7 @@ impl From<i32> for Fp32 {
 
 impl From<f32> for Fp32 {
     fn from(v: f32) -> Self {
-        Fp32((v * Self::F32_MUL) as i32)
+        Fp32::from_f32(v)
     }
 }
 
@@ -172,6 +192,12 @@ impl Mul<Fp32> for Fp32 {
     }
 }
 
+impl MulAssign<Fp32> for Fp32 {
+    fn mul_assign(&mut self, rhs: Fp32) {
+        *self = *self * rhs;
+    }
+}
+
 impl Div<i32> for Fp32 {
     type Output = Fp32;
 
@@ -194,6 +220,12 @@ impl Div<Fp32> for Fp32 {
         } else {
             Fp32(v as _)
         }
+    }
+}
+
+impl DivAssign<Fp32> for Fp32 {
+    fn div_assign(&mut self, rhs: Fp32) {
+        *self = *self / rhs;
     }
 }
 
