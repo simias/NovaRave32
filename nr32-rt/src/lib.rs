@@ -5,15 +5,14 @@ extern crate alloc;
 #[macro_use]
 extern crate log;
 
+mod allocator;
 mod asm;
 mod console;
 pub mod gpu;
 pub mod math;
 mod scheduler;
-pub mod syscalls;
+pub mod syscall;
 pub mod utils;
-
-use embedded_alloc::LlffHeap as Heap;
 
 // Linker symbols
 extern "C" {
@@ -109,14 +108,14 @@ fn handle_ecall() {
     let mut sched = scheduler::get();
     let ret = match code {
         // Can also be used for yielding with `ticks` set to 0
-        syscalls::SYS_SLEEP => {
+        syscall::SYS_SLEEP => {
             let ticks = (arg0 as u64) | ((arg1 as u64) << 32);
 
             sched.sleep_current_task(ticks);
             0
         }
-        syscalls::SYS_WAIT_EVENT => sched.wait_event_current_task(arg0),
-        syscalls::SYS_SPAWN_TASK => {
+        syscall::SYS_WAIT_EVENT => sched.wait_event_current_task(arg0),
+        syscall::SYS_SPAWN_TASK => {
             let entry = arg0;
             let data = arg1;
             let prio = arg2 as i32;
@@ -127,9 +126,14 @@ fn handle_ecall() {
             // makes no sense to set A0.
             return;
         }
-        syscalls::SYS_EXIT => {
+        syscall::SYS_EXIT => {
             sched.exit_current_task();
             return;
+        }
+        syscall::SYS_ALLOC => ALLOCATOR.raw_alloc(arg0, arg1) as usize,
+        syscall::SYS_FREE => {
+            ALLOCATOR.raw_free(arg0 as *mut u8, arg1, arg2);
+            0
         }
         _ => panic!("Unknown syscall 0x{:02x}", code),
     };
@@ -168,10 +172,9 @@ fn system_init() {
         heap_size / 1024
     );
 
-    // Init allocator
-    unsafe { HEAP.init(heap_start, heap_size) };
+    unsafe { ALLOCATOR.init(heap_start, heap_size) };
 
-    utils::log_heap_stats();
+    ALLOCATOR.log_heap_stats();
 
     // Activate VSYNC IRQ (for tasks that block on VSync, we could only enable it when needed but
     // it's a minor load)
@@ -185,7 +188,7 @@ fn system_init() {
 }
 
 #[global_allocator]
-static HEAP: Heap = Heap::empty();
+static ALLOCATOR: allocator::Allocator = allocator::Allocator::empty();
 
 mod panic_handler {
     use crate::utils::shutdown;

@@ -1,5 +1,6 @@
 use crate::MTIME_HZ;
 use alloc::boxed::Box;
+use core::alloc::Layout;
 use core::arch::asm;
 use core::time::Duration;
 
@@ -25,6 +26,14 @@ pub fn exit() -> ! {
     syscall_0(SYS_EXIT);
 
     unreachable!()
+}
+
+pub fn alloc(layout: Layout) -> *mut u8 {
+    syscall_2(SYS_ALLOC, layout.size(), layout.align()) as *mut u8
+}
+
+pub fn free(ptr: *mut u8, layout: Layout) {
+    syscall_3(SYS_FREE, ptr as usize, layout.size(), layout.align());
 }
 
 fn syscall_0(code: usize) -> usize {
@@ -57,6 +66,19 @@ fn syscall_2(code: usize, mut arg0: usize, arg1: usize) -> usize {
             in("a7") code,
             inout("a0") arg0,
             in("a1") arg1,
+        );
+    }
+
+    arg0
+}
+
+fn syscall_3(code: usize, mut arg0: usize, arg1: usize, arg2: usize) -> usize {
+    unsafe {
+        asm!("ecall",
+            in("a7") code,
+            inout("a0") arg0,
+            in("a1") arg1,
+            in("a2") arg2,
         );
     }
 
@@ -145,6 +167,17 @@ pub const SYS_WAIT_EVENT: usize = 0x02;
 pub const SYS_SPAWN_TASK: usize = 0x03;
 /// Kills the current thread
 pub const SYS_EXIT: usize = 0x04;
+/// Allocate memory
+///
+/// - a0: size to allocate
+/// - a1: alignment (must be power of 2)
+pub const SYS_ALLOC: usize = 0x05;
+/// Free memory
+///
+/// - a0: pointer to free
+/// - a1: block size
+/// - a2: alignment (must be power of 2)
+pub const SYS_FREE: usize = 0x06;
 
 pub mod events {
     pub const EV_VSYNC: usize = 1;

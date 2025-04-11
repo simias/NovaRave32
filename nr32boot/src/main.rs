@@ -11,7 +11,7 @@ use nr32_rt::math::{
     matrix::{MAT0, MAT1, MAT2, MAT3, MAT4, MAT5, MAT7},
     Angle, Fp32,
 };
-use nr32_rt::syscalls::{sleep, wait_for_vsync, ThreadBuilder};
+use nr32_rt::syscall::{sleep, wait_for_vsync, ThreadBuilder};
 
 #[export_name = "nr32_main"]
 pub fn main() {

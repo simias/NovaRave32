@@ -1,6 +1,6 @@
 use crate::{
     asm::{_idle_task, _task_runner},
-    syscalls, MTIME_HZ,
+    syscall, MTIME_HZ,
 };
 use alloc::{boxed::Box, vec, vec::Vec};
 use spin::{Mutex, MutexGuard};
@@ -209,7 +209,7 @@ impl Scheduler {
         let t = &mut self.tasks[self.cur_task];
 
         t.state = match ev {
-            syscalls::events::EV_VSYNC => TaskState::WaitingForVSync,
+            syscall::events::EV_VSYNC => TaskState::WaitingForVSync,
             _ => {
                 error!("Can't waiting for unknown event {}", ev);
                 return !0;
@@ -229,12 +229,7 @@ impl Scheduler {
         riscv::register::mscratch::write(task.sp);
         riscv::register::mepc::write(task.ra);
 
-        // I'd prefer to use MPP::User for the task threads but I can't do that because we share
-        // the allocator and it needs to access mstatus in the critical section.
-        //
-        // We could work around the issue by having a separate allocator for tasks, but that's
-        // probably overkill.
-        let mpp_ret = riscv::register::mstatus::MPP::Machine;
+        let mpp_ret = riscv::register::mstatus::MPP::User;
 
         unsafe {
             riscv::register::mstatus::set_mpp(mpp_ret);

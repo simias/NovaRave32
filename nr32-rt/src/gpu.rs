@@ -1,4 +1,4 @@
-use crate::syscalls::sleep;
+use crate::syscall::sleep;
 use core::time::Duration;
 
 pub fn send_to_gpu(cmd: u32) {
