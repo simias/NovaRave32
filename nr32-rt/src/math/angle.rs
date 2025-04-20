@@ -1,6 +1,6 @@
 use super::Fp32;
 use core::fmt;
-use core::ops::{Add, AddAssign, Div, Sub, SubAssign};
+use core::ops::{Add, AddAssign, Div, Mul, Sub, SubAssign};
 
 /// Angle represented as an u16. One full turn is represented over the full 16bit range, meaning
 /// that we have a precision of 360 / (2**16) -> 0.0055°
@@ -127,6 +127,14 @@ impl Div<u16> for Angle {
 
     fn div(self, rhs: u16) -> Angle {
         Angle(self.0 / rhs)
+    }
+}
+
+impl Mul<u16> for Angle {
+    type Output = Angle;
+
+    fn mul(self, rhs: u16) -> Angle {
+        Angle(self.0.wrapping_mul(rhs))
     }
 }
 

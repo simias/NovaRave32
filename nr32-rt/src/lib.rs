@@ -9,6 +9,7 @@ mod allocator;
 mod asm;
 mod console;
 pub mod gpu;
+mod input_dev;
 pub mod math;
 mod scheduler;
 pub mod syscall;
@@ -65,12 +66,21 @@ fn handle_irqs() {
     // VSYNC
     if pending & 1 != 0 {
         let mut sched = scheduler::get();
-        sched.got_vsync();
+        sched.wake_up_state(scheduler::TaskState::WaitingForVSync);
+    }
+
+    if pending & (1 << 1) != 0 {
+        let mut input_dev = input_dev::get();
+
+        input_dev.xmit_done();
+
+        let mut sched = scheduler::get();
+        sched.wake_up_state(scheduler::TaskState::WaitingForInputDev);
     }
 
     // ACK everything
     unsafe {
-        IRQ_PENDING.write(pending);
+        IRQ_PENDING.write_volatile(pending);
     }
 }
 
@@ -114,7 +124,10 @@ fn handle_ecall() {
             sched.sleep_current_task(ticks);
             0
         }
-        syscall::SYS_WAIT_EVENT => sched.wait_event_current_task(arg0),
+        syscall::SYS_WAIT_FOR_VSYNC => {
+            sched.current_task_set_state(scheduler::TaskState::WaitingForVSync);
+            return;
+        }
         syscall::SYS_SPAWN_TASK => {
             let entry = arg0;
             let data = arg1;
@@ -122,9 +135,7 @@ fn handle_ecall() {
             let stack_size = arg3;
 
             sched.spawn_task(entry, data, prio, stack_size);
-            // We have to return here because spawn_task will have switched to the new task, so it
-            // makes no sense to set A0.
-            return;
+            0
         }
         syscall::SYS_EXIT => {
             sched.exit_current_task();
@@ -135,6 +146,23 @@ fn handle_ecall() {
             ALLOCATOR.raw_free(arg0 as *mut u8, arg1, arg2);
             0
         }
+        syscall::SYS_INPUT_DEV => {
+            let port = arg0 as u8;
+            let ptr = arg1 as *mut u8;
+            let len = arg2;
+
+            let buf = unsafe { core::slice::from_raw_parts_mut(ptr, len) };
+
+            let mut input_dev = input_dev::get();
+
+            match input_dev.xmit(port, buf) {
+                Ok(_) => {
+                    sched.current_task_set_state(scheduler::TaskState::WaitingForInputDev);
+                    return;
+                }
+                Err(_) => !0,
+            }
+        }
         _ => panic!("Unknown syscall 0x{:02x}", code),
     };
 
@@ -142,7 +170,7 @@ fn handle_ecall() {
     unsafe {
         let p = task_sp + (23 * 4);
         let p = p as *mut usize;
-        p.write(ret);
+        p.write_volatile(ret);
     }
 }
 
@@ -176,13 +204,16 @@ fn system_init() {
 
     ALLOCATOR.log_heap_stats();
 
-    // Activate VSYNC IRQ (for tasks that block on VSync, we could only enable it when needed but
-    // it's a minor load)
     unsafe {
         // ACK everything just in case
-        IRQ_PENDING.write(!0);
-        // Enable VSYNC IRQ
-        IRQ_ENABLED.write(1);
+        IRQ_PENDING.write_volatile(!0);
+        let mut irq_en = 0;
+        // Activate VSYNC IRQ (for tasks that block on VSync, we could only enable it when needed but
+        // it's a minor load)
+        irq_en |= 1;
+        // Input dev IRQ
+        irq_en |= 1 << 1;
+        IRQ_ENABLED.write_volatile(irq_en);
         riscv::register::mie::set_mext();
     }
 }

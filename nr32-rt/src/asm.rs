@@ -217,7 +217,7 @@ _idle_task:
 
 // Trampoline when spawning a task that takes care of calling SYS_EXIT once it returns
 //
-// The task start address is in a0
+// The task start address is in a1. The task's data argument is in a0.
 global_asm!(
     ".section .text, \"ax\"
     .global _task_runner

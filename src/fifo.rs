@@ -1,6 +1,7 @@
 use std::ops::Index;
 
 /// Generic FIFO implementation. N must be a power of two.
+#[derive(Debug)]
 pub struct Fifo<const N: usize, T> {
     buffer: [T; N],
     write_idx: u32,
@@ -37,7 +38,10 @@ impl<const N: usize, T> Fifo<N, T> {
     }
 
     pub fn push(&mut self, v: T) {
-        assert!(!self.is_full());
+        if self.is_full() {
+            warn!("Ignoring push on full FIFO");
+            return;
+        }
 
         let idx = (self.write_idx as usize) & (N - 1);
 
@@ -45,20 +49,27 @@ impl<const N: usize, T> Fifo<N, T> {
 
         self.write_idx = self.write_idx.wrapping_add(1);
     }
+
+    pub fn clear(&mut self) {
+        self.write_idx = 0;
+        self.read_idx = 0;
+    }
 }
 
 impl<const N: usize, T> Fifo<N, T>
 where
     T: Copy,
 {
-    pub fn pop(&mut self) -> T {
-        assert!(!self.is_empty());
+    pub fn pop(&mut self) -> Option<T> {
+        if self.is_empty() {
+            return None;
+        }
 
         let idx = (self.read_idx as usize) & (N - 1);
 
         self.read_idx = self.read_idx.wrapping_add(1);
 
-        self.buffer[idx]
+        Some(self.buffer[idx])
     }
 
     pub fn discard(&mut self, n: usize) {

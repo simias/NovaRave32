@@ -1,6 +1,6 @@
 use crate::{
     asm::{_idle_task, _task_runner},
-    syscall, MTIME_HZ,
+    MTIME_HZ,
 };
 use alloc::{boxed::Box, vec, vec::Vec};
 use spin::{Mutex, MutexGuard};
@@ -176,11 +176,11 @@ impl Scheduler {
         }
     }
 
-    pub fn got_vsync(&mut self) {
+    pub fn wake_up_state(&mut self, state: TaskState) {
         let mut task_awoken = false;
 
         for t in &mut self.tasks {
-            if let TaskState::WaitingForVSync = t.state {
+            if t.state == state {
                 task_awoken = true;
                 t.state = TaskState::Running;
             }
@@ -205,16 +205,10 @@ impl Scheduler {
         self.schedule();
     }
 
-    pub fn wait_event_current_task(&mut self, ev: usize) -> usize {
+    pub fn current_task_set_state(&mut self, state: TaskState) -> usize {
         let t = &mut self.tasks[self.cur_task];
 
-        t.state = match ev {
-            syscall::events::EV_VSYNC => TaskState::WaitingForVSync,
-            _ => {
-                error!("Can't waiting for unknown event {}", ev);
-                return !0;
-            }
-        };
+        t.state = state;
 
         self.schedule();
 
@@ -258,8 +252,8 @@ impl Task {
     }
 }
 
-#[derive(Copy, Clone)]
-enum TaskState {
+#[derive(Copy, Clone, PartialEq, Eq)]
+pub enum TaskState {
     Dead,
     Running,
     Sleeping {
@@ -267,6 +261,7 @@ enum TaskState {
         until: u64,
     },
     WaitingForVSync,
+    WaitingForInputDev,
 }
 
 /// Use MTIMECMP to schedule an interrupt

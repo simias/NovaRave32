@@ -14,6 +14,10 @@ export class Emulator {
   // Context for displaying the off-screen buffer to the canvas
   screenContext: GlContext;
   wasm: Awaited<ReturnType<typeof init>>;
+  // Last recorded touch position (if any). 16bit integers that go from [0, 0]
+  // on the top-left and [0xffff, 0xffff] in the bottom right. `undefined` if
+  // there's no touch.
+  touchPos: [number, number] | undefined = undefined;
 
   private constructor(canvas: HTMLCanvasElement, wasm: Awaited<ReturnType<typeof init>>) {
     this.wasm = wasm;
@@ -144,6 +148,26 @@ export class Emulator {
       // Rebind the normal context for the next frame
       noRaBind();
     });
+
+    // Input stuff
+    for (const event of [
+      'mousedown',
+      'mousemove',
+      'mouseup',
+      'touchstart',
+      'touchmove',
+      'touchend',
+    ]) {
+      canvas.addEventListener(event, (e) => this.updateTouch(e));
+    }
+
+    for (const event of ['mouseup', 'touchend']) {
+      document.addEventListener(event, (e) => {
+        if (this.touchPos) {
+          this.updateTouch(e);
+        }
+      });
+    }
   }
 
   static async build(canvas: HTMLCanvasElement): Promise<Emulator> {
@@ -157,6 +181,41 @@ export class Emulator {
   }
 
   runFrame() {
+    this.m.set_inputs(this.touchPos);
     this.m.run_frame();
+  }
+
+  updateTouch(ev: Event) {
+    const rect = this.canvas.getBoundingClientRect();
+    let x: number, y: number;
+
+    ev.preventDefault();
+
+    if (typeof TouchEvent !== 'undefined' && ev instanceof TouchEvent) {
+      if (ev.touches.length > 0) {
+        x = ev.touches[0].clientX - rect.left;
+        y = ev.touches[0].clientY - rect.top;
+      } else {
+        // No touch
+        this.touchPos = undefined;
+        return;
+      }
+    } else if (ev instanceof MouseEvent) {
+      if ((ev.buttons & 1) == 0) {
+        // No click
+        this.touchPos = undefined;
+        return;
+      }
+      x = ev.clientX - rect.left;
+      y = ev.clientY - rect.top;
+    } else {
+      // ?
+      return;
+    }
+
+    x = Math.round((x / rect.width) * 0x400);
+    y = Math.round((y / rect.height) * 0x400);
+
+    this.touchPos = [x, y];
   }
 }

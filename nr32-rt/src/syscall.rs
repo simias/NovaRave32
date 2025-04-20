@@ -15,7 +15,7 @@ pub fn sleep(duration: Duration) {
 }
 
 pub fn wait_for_vsync() {
-    syscall_1(SYS_WAIT_EVENT, events::EV_VSYNC);
+    syscall_0(SYS_WAIT_FOR_VSYNC);
 }
 
 pub fn spawn_task(f: fn(), prio: i32) {
@@ -36,67 +36,11 @@ pub fn free(ptr: *mut u8, layout: Layout) {
     syscall_3(SYS_FREE, ptr as usize, layout.size(), layout.align());
 }
 
-fn syscall_0(code: usize) -> usize {
-    let mut arg0;
+pub fn input_device(port: u8, data_in_out: &mut [u8]) {
+    let len = data_in_out.len();
+    let ptr = data_in_out.as_mut_ptr();
 
-    unsafe {
-        asm!("ecall",
-            in("a7") code,
-            out("a0") arg0,
-        );
-    }
-
-    arg0
-}
-
-fn syscall_1(code: usize, mut arg0: usize) -> usize {
-    unsafe {
-        asm!("ecall",
-            in("a7") code,
-            inout("a0") arg0,
-        );
-    }
-
-    arg0
-}
-
-fn syscall_2(code: usize, mut arg0: usize, arg1: usize) -> usize {
-    unsafe {
-        asm!("ecall",
-            in("a7") code,
-            inout("a0") arg0,
-            in("a1") arg1,
-        );
-    }
-
-    arg0
-}
-
-fn syscall_3(code: usize, mut arg0: usize, arg1: usize, arg2: usize) -> usize {
-    unsafe {
-        asm!("ecall",
-            in("a7") code,
-            inout("a0") arg0,
-            in("a1") arg1,
-            in("a2") arg2,
-        );
-    }
-
-    arg0
-}
-
-fn syscall_4(code: usize, mut arg0: usize, arg1: usize, arg2: usize, arg3: usize) -> usize {
-    unsafe {
-        asm!("ecall",
-            in("a7") code,
-            inout("a0") arg0,
-            in("a1") arg1,
-            in("a2") arg2,
-            in("a3") arg3,
-        );
-    }
-
-    arg0
+    syscall_3(SYS_INPUT_DEV, port as usize, ptr as usize, len);
 }
 
 #[derive(Copy, Clone)]
@@ -154,10 +98,68 @@ impl ThreadBuilder {
     }
 }
 
+impl Default for ThreadBuilder {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+fn syscall_0(code: usize) -> usize {
+    let mut arg0;
+
+    unsafe {
+        asm!("ecall",
+            in("a7") code,
+            out("a0") arg0,
+        );
+    }
+
+    arg0
+}
+
+fn syscall_2(code: usize, mut arg0: usize, arg1: usize) -> usize {
+    unsafe {
+        asm!("ecall",
+            in("a7") code,
+            inout("a0") arg0,
+            in("a1") arg1,
+        );
+    }
+
+    arg0
+}
+
+fn syscall_3(code: usize, mut arg0: usize, arg1: usize, arg2: usize) -> usize {
+    unsafe {
+        asm!("ecall",
+            in("a7") code,
+            inout("a0") arg0,
+            in("a1") arg1,
+            in("a2") arg2,
+        );
+    }
+
+    arg0
+}
+
+fn syscall_4(code: usize, mut arg0: usize, arg1: usize, arg2: usize, arg3: usize) -> usize {
+    unsafe {
+        asm!("ecall",
+            in("a7") code,
+            inout("a0") arg0,
+            in("a1") arg1,
+            in("a2") arg2,
+            in("a3") arg3,
+        );
+    }
+
+    arg0
+}
+
 /// Suspend task for [a1:a0] MTIME ticks
 pub const SYS_SLEEP: usize = 0x01;
-/// Wait for the event described in a0
-pub const SYS_WAIT_EVENT: usize = 0x02;
+/// Put task to sleep until VSYNC
+pub const SYS_WAIT_FOR_VSYNC: usize = 0x02;
 /// Spawn a thread
 ///
 /// - a0: thread entry point
@@ -178,6 +180,12 @@ pub const SYS_ALLOC: usize = 0x05;
 /// - a1: block size
 /// - a2: alignment (must be power of 2)
 pub const SYS_FREE: usize = 0x06;
+/// Input port data exchange. Suspends task until transfer has completed.
+///
+/// - a0: port to select
+/// - a1: pointer to the read/write buffer containing the data to be sent and filled with the reply
+/// - a2: how many bytes to read/write (max 16)
+pub const SYS_INPUT_DEV: usize = 0x07;
 
 pub mod events {
     pub const EV_VSYNC: usize = 1;

@@ -8,6 +8,8 @@ use crate::{cpu, NoRa32};
 pub enum Interrupt {
     /// Triggered by the GPU every time a frame has completed
     VSync = 0,
+    /// Triggered when the input device interface's IRQ line has a rising edge
+    InputDev = 1,
 }
 
 pub struct Controller {

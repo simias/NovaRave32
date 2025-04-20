@@ -7,6 +7,7 @@ extern crate log;
 mod cpu;
 mod fifo;
 mod gpu;
+mod input_dev;
 mod irq;
 mod spu;
 mod sync;
@@ -33,6 +34,7 @@ pub struct NoRa32 {
     systimer: systimer::Timer,
     irq: irq::Controller,
     spu: spu::Spu,
+    input_dev: input_dev::InputDev,
     /// Buffer containing messages written to the debug console before they're flushed to stdout
     dbg_out: Vec<u8>,
     /// Sets to false if the emulator should shutdown
@@ -58,6 +60,7 @@ impl NoRa32 {
             systimer: systimer::Timer::new(),
             irq: irq::Controller::new(),
             spu: spu::Spu::new(),
+            input_dev: input_dev::InputDev::new(),
             dbg_out: Vec::new(),
             run: true,
             cycle_counter: 0,
@@ -79,6 +82,21 @@ impl NoRa32 {
     #[wasm_bindgen]
     pub fn on_output_audio_samples(&mut self, cb: Function) {
         self.callbacks.js_output_audio_samples = Some(cb);
+    }
+
+    #[wasm_bindgen]
+    pub fn set_inputs(&mut self, touch_pos: JsValue) {
+        let mut touch = None;
+        if touch_pos.is_array() {
+            let arr: Array = touch_pos.into();
+
+            let x = arr.get(0).as_f64().unwrap_or(0.) as u16;
+            let y = arr.get(1).as_f64().unwrap_or(0.) as u16;
+
+            touch = Some([x, y]);
+        }
+
+        self.input_dev.touchscreen_mut().set_touch(touch);
     }
 
     #[wasm_bindgen]
@@ -156,6 +174,10 @@ impl NoRa32 {
             return systimer::store_word(self, off, v);
         }
 
+        if let Some(off) = INPUT_DEV.contains(addr) {
+            return input_dev::store_word(self, off, v);
+        }
+
         if let Some(off) = DEBUG.contains(addr) {
             if off == 0x20 {
                 // Shutdown
@@ -199,6 +221,10 @@ impl NoRa32 {
             word |= u32::from(v) << bitpos;
             self.ram[wo] = word;
             return;
+        }
+
+        if let Some(off) = INPUT_DEV.contains(addr) {
+            return input_dev::store_word(self, off, u32::from(v));
         }
 
         if let Some(off) = DEBUG.contains(addr) {
@@ -261,6 +287,10 @@ impl NoRa32 {
         if let Some(off) = ROM.contains(addr) {
             let word = self.rom[(off >> 2) as usize];
             return (word >> ((off & 3) << 3)) as u8;
+        }
+
+        if let Some(off) = INPUT_DEV.contains(addr) {
+            return input_dev::load_word(self, off) as u8;
         }
 
         panic!("Can't load byte from {:x} {:?}", addr, self.cpu);
@@ -387,6 +417,11 @@ const GPU: Range = Range {
 
 const SPU: Range = Range {
     base: 0x1002_0000,
+    len: 1024,
+};
+
+const INPUT_DEV: Range = Range {
+    base: 0x1003_0000,
     len: 1024,
 };
 
