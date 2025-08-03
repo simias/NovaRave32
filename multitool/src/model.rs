@@ -229,7 +229,6 @@ impl Model {
 
             let is_strip = prim.mode() == gltf::mesh::Mode::TriangleStrip;
 
-            // let reader = prim.reader(|b| Some(&buffers[b.index()]));
             let reader = prim.reader(|b| buffers.get(b.index()).map(|d| d as &[u8]));
 
             // Since we store all mesh primitives in one array, we have to offset the indices of
@@ -248,6 +247,19 @@ impl Model {
                         v.set_emissive(is_emissive);
 
                         vertices.push(v);
+                    }
+                }
+            }
+
+            if opts.keep_normals {
+                match reader.read_normals() {
+                    None => {
+                        warn!("Primitive #{} has no normals data", prim.index());
+                    }
+                    Some(nn) => {
+                        for (n, v) in nn.zip(vertices.iter_mut()) {
+                            v.set_normal(n);
+                        }
                     }
                 }
             }
@@ -429,8 +441,14 @@ impl Model {
                     let c2 = bgr888(v2.col);
 
                     let needs_gouraud = c0 != c1 || c0 != c2;
+                    let mut has_normals = v0.normal().is_some() && v1.normal().is_some() && v2.normal().is_some();
 
-                    let blend_mode = if needs_gouraud { 2 } else { 0 };
+                    if needs_gouraud && has_normals {
+                        warn!("Triangle has both normal and gouraud data, dropping normals");
+                        has_normals = false;
+                    }
+
+                    let blend_mode = if needs_gouraud { 2 } else if has_normals { 4 } else { 0 };
 
                     let p0 = scale_coords(v0.pos);
                     let p1 = scale_coords(v1.pos);
@@ -453,9 +471,6 @@ impl Model {
                         continue;
                     }
 
-                    let cmd = (0x40 << 24) | (blend_mode << 25) | c0;
-                    wu32(w, cmd)?;
-
                     let xyz = |w: &mut W, pos: [i32; 3]| {
                         w.write_i16::<LittleEndian>(pos[2] as i16)?;
                         w.write_i16::<LittleEndian>(0)?;
@@ -463,13 +478,44 @@ impl Model {
                         w.write_i16::<LittleEndian>(pos[1] as i16)
                     };
 
+                    let normal = |w: &mut W, v: &Vertex| -> Result<(), std::io::Error>{
+                        let n = v.normal().expect("Missing normal data");
+
+                        // Make sure to normalize the data, just in case
+                        let norm2 = n[0] * n[0] + n[1] * n[1] + n[2] * n[2];
+                        let norm = norm2.sqrt();
+
+                        w.write_i8(0)?;
+
+                        for c in n {
+                            let cc = ((c / norm) * 0x7f as f32).round().clamp(-0x7f as f32, 0x7f as f32);
+                            w.write_i8(cc as i8)?;
+                        }
+
+                        Ok(())
+                    };
+
+
+                    let cmd = (0x40 << 24) | (blend_mode << 25) | c0;
+                    wu32(w, cmd)?;
+                    if has_normals {
+                        normal(w, v0)?;
+                    }
                     xyz(w, p0)?;
+
                     if needs_gouraud {
                         wu32(w, c1)?;
                     }
+                    if has_normals {
+                        normal(w, v1)?;
+                    }
                     xyz(w, p1)?;
+
                     if needs_gouraud {
                         wu32(w, c2)?;
+                    }
+                    if has_normals {
+                        normal(w, v2)?;
                     }
                     xyz(w, p2)?;
                 }
@@ -538,6 +584,7 @@ impl ModelOptions {
 #[derive(Copy, Clone)]
 struct Vertex {
     pos: [f32; 3],
+    normal: Option<[f32; 3]>,
     col: [u8; 3],
     emissive: bool,
 }
@@ -546,6 +593,7 @@ impl Vertex {
     fn from_position_color(pos: [f32; 3], col: [u8; 3]) -> Vertex {
         Vertex {
             pos,
+            normal: None,
             col,
             emissive: false,
         }
@@ -557,6 +605,14 @@ impl Vertex {
 
     fn set_emissive(&mut self, emissive: bool) {
         self.emissive = emissive;
+    }
+
+    fn set_normal(&mut self, normal: [f32; 3]) {
+        self.normal = Some(normal);
+    }
+
+    fn normal(&self) -> Option<[f32; 3]> {
+        self.normal
     }
 }
 
