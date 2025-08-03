@@ -40,7 +40,8 @@ impl Cpu {
     pub fn new() -> Cpu {
         Cpu {
             decoder: Decoder::new(),
-            pc: ROM.base,
+            // The first 0x100 bytes of the ROM are reserved for metadata/header
+            pc: ROM.base + 0x100,
             x: [0; 33],
             mode: Mode::Machine,
             mstatus: 0,
@@ -583,7 +584,7 @@ pub fn step(m: &mut NoRa32) {
                 let v = m.load_halfword(addr);
                 m.cpu.xset(rd, v as i16 as u32)
             } else {
-                panic!("Misaligned store {:x} {:?}", addr, m.cpu);
+                panic!("Misaligned LH {:x} {:?}", addr, m.cpu);
             }
         }
         Instruction::Lhu { rd, rs1, off } => {
@@ -594,7 +595,7 @@ pub fn step(m: &mut NoRa32) {
                 let v = m.load_halfword(addr);
                 m.cpu.xset(rd, v as u32)
             } else {
-                panic!("Misaligned store {:x} {:?}", addr, m.cpu);
+                panic!("Misaligned LHU {:x} {:?}", addr, m.cpu);
             }
         }
         Instruction::Lw { rd, rs1, off } => {
@@ -605,7 +606,7 @@ pub fn step(m: &mut NoRa32) {
                 let v = m.load_word(addr);
                 m.cpu.xset(rd, v)
             } else {
-                panic!("Misaligned store {:x} {:?}", addr, m.cpu);
+                panic!("Misaligned LW {:x} {:?}", addr, m.cpu);
             }
         }
         Instruction::Sb { rs1, rs2, off } => {

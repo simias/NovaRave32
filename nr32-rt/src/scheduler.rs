@@ -16,6 +16,7 @@ static SCHEDULER: Mutex<Scheduler> = Mutex::new(Scheduler {
     cur_task: 0,
 });
 
+#[link_section = ".text.fast"]
 pub fn get() -> MutexGuard<'static, Scheduler> {
     // There should never be contention on the scheduler since we're running with IRQs disabled
     match SCHEDULER.try_lock() {
@@ -80,6 +81,7 @@ impl Scheduler {
         self.schedule()
     }
 
+    #[link_section = ".text.fast"]
     pub fn schedule(&mut self) {
         {
             // Start by saving the state of the current task
@@ -164,6 +166,7 @@ impl Scheduler {
         }
     }
 
+    #[link_section = ".text.fast"]
     fn maybe_wake_up_tasks(&mut self) {
         let now = mtime_get();
 
@@ -176,6 +179,7 @@ impl Scheduler {
         }
     }
 
+    #[link_section = ".text.fast"]
     pub fn wake_up_state(&mut self, state: TaskState) {
         let mut task_awoken = false;
 
@@ -191,6 +195,7 @@ impl Scheduler {
         }
     }
 
+    #[link_section = ".text.fast"]
     pub fn sleep_current_task(&mut self, ticks: u64) {
         if ticks > 0 {
             let t = &mut self.tasks[self.cur_task];
@@ -205,6 +210,7 @@ impl Scheduler {
         self.schedule();
     }
 
+    #[link_section = ".text.fast"]
     pub fn current_task_set_state(&mut self, state: TaskState) -> usize {
         let t = &mut self.tasks[self.cur_task];
 
@@ -215,6 +221,7 @@ impl Scheduler {
         0
     }
 
+    #[link_section = ".text.fast"]
     fn switch_to_task(&mut self, task_id: usize) {
         let task = &self.tasks[task_id];
 
@@ -247,6 +254,7 @@ struct Task {
 }
 
 impl Task {
+    #[link_section = ".text.fast"]
     fn runnable(&self) -> bool {
         matches!(self.state, TaskState::Running)
     }
@@ -265,6 +273,7 @@ pub enum TaskState {
 }
 
 /// Use MTIMECMP to schedule an interrupt
+#[link_section = ".text.fast"]
 fn schedule_preempt(until: u64) {
     mtimecmp_set(until);
 
@@ -317,6 +326,7 @@ const MTIMECMP_L: *mut usize = 0xffff_fff8 as *mut usize;
 /// MTIMECMP[63:32]
 const MTIMECMP_H: *mut usize = 0xffff_fffc as *mut usize;
 
+#[link_section = ".text.fast"]
 fn mtime_get() -> u64 {
     loop {
         unsafe {
@@ -332,6 +342,7 @@ fn mtime_get() -> u64 {
     }
 }
 
+#[link_section = ".text.fast"]
 fn mtimecmp_set(cmp: u64) {
     let l = cmp as usize;
     let h = (cmp >> 32) as usize;

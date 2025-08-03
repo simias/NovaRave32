@@ -4,7 +4,7 @@ use super::{Extendable, Reg};
 use crate::{NoRa32, RAM, ROM};
 
 /// Number of bytes per instruction page as a power of two
-const PAGE_LEN_SHIFT: usize = 10;
+const PAGE_LEN_SHIFT: usize = 11;
 
 /// Number of bytes per instruction page
 const PAGE_LEN_BYTES: usize = 1 << PAGE_LEN_SHIFT;
@@ -14,7 +14,7 @@ const PAGE_LEN_BYTES: usize = 1 << PAGE_LEN_SHIFT;
 const PAGE_LEN_OP: usize = PAGE_LEN_BYTES >> 1;
 
 /// Max number of decoded pages before we start recycling
-const PAGE_CACHE_MAX: usize = 1024;
+const PAGE_CACHE_MAX: usize = 512;
 
 /// Total number of possible pages on the system. Since we can only run code from ROM or RAM, we
 /// don't have to look further.
@@ -55,7 +55,7 @@ fn lut_idx(addr: u32) -> usize {
     }
 
     if let Some(off) = ROM.contains(addr) {
-        return ((off + ROM.len) >> PAGE_LEN_SHIFT) as usize;
+        return ((off + RAM.len) >> PAGE_LEN_SHIFT) as usize;
     }
 
     panic!("Invalid PC {:x}", addr);
@@ -63,11 +63,19 @@ fn lut_idx(addr: u32) -> usize {
 
 /// Returns the base address of a page from its lut_idx
 fn lut_idx_to_base(lidx: usize) -> u32 {
-    let i = (lidx as u32) << PAGE_LEN_SHIFT;
+    debug_assert!(lidx < PAGE_TOTAL);
 
-    let base = ((i & (ROM.len - 1)) | ((i & ROM.len) << 8)) + ROM.base;
+    let lidx = lidx as u32;
 
-    debug_assert_eq!(lut_idx(base), lidx);
+    let off = lidx << PAGE_LEN_SHIFT;
+
+    let base = if (lidx as usize) >= lut_idx(ROM.base) {
+        off - RAM.len + ROM.base
+    } else {
+        off + RAM.base
+    };
+
+    debug_assert_eq!(lut_idx(base), lidx as usize);
 
     base
 }
@@ -1077,29 +1085,30 @@ const fn c_joff(op: u16) -> i16 {
 fn test_lut_idx() {
     let plen = PAGE_LEN_BYTES as u32;
 
-    assert_eq!(lut_idx(ROM.base) as u32, 0);
-    assert_eq!(lut_idx(ROM.base + 10) as u32, 0);
-    assert_eq!(lut_idx(ROM.base + plen - 1) as u32, 0);
-    assert_eq!(lut_idx(ROM.base + plen) as u32, 1);
-    assert_eq!(lut_idx(ROM.base + plen + 4) as u32, 1);
-    assert_eq!(lut_idx(ROM.base + plen * 10 + plen / 2) as u32, 10);
+    assert_eq!(lut_idx(RAM.base) as u32, 0);
+    assert_eq!(lut_idx(RAM.base + 10) as u32, 0);
+    assert_eq!(lut_idx(RAM.base + plen - 1) as u32, 0);
+    assert_eq!(lut_idx(RAM.base + plen) as u32, 1);
+    assert_eq!(lut_idx(RAM.base + plen + 4) as u32, 1);
+    assert_eq!(lut_idx(RAM.base + plen * 10 + plen / 2) as u32, 10);
 
-    let ram_off = ROM.len >> PAGE_LEN_SHIFT;
+    let rom_off = RAM.len >> PAGE_LEN_SHIFT;
 
-    assert_eq!(lut_idx(RAM.base) as u32, ram_off);
-    assert_eq!(lut_idx(RAM.base + 10) as u32, ram_off);
-    assert_eq!(lut_idx(RAM.base + plen - 1) as u32, ram_off);
-    assert_eq!(lut_idx(RAM.base + plen) as u32, ram_off + 1);
-    assert_eq!(lut_idx(RAM.base + plen + 4) as u32, ram_off + 1);
+    assert_eq!(lut_idx(ROM.base) as u32, rom_off);
+    assert_eq!(lut_idx(ROM.base + 10) as u32, rom_off);
+    assert_eq!(lut_idx(ROM.base + plen - 1) as u32, rom_off);
+    assert_eq!(lut_idx(ROM.base + plen) as u32, rom_off + 1);
+    assert_eq!(lut_idx(ROM.base + plen + 4) as u32, rom_off + 1);
     assert_eq!(
-        lut_idx(RAM.base + plen * 10 + plen / 2) as u32,
-        ram_off + 10
+        lut_idx(ROM.base + plen * 10 + plen / 2) as u32,
+        rom_off + 10
     );
 }
 
 #[test]
 fn test_lut_idx_max() {
-    assert!(lut_idx(u32::MAX) < PAGE_TOTAL);
+    assert!(lut_idx(ROM.base + ROM.len - 1) < PAGE_TOTAL);
+    assert!(lut_idx(RAM.base + RAM.len - 1) < PAGE_TOTAL);
 }
 
 #[test]

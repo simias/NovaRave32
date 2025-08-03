@@ -44,10 +44,10 @@ _start:
     csrw    mtvec, t0
 
     /* Copy .data from ROM to RAM */
-    la      t0, __sdata
-    la      t1, __edata
+    la      t0, __s_ram_copy
+    la      t1, __e_ram_copy
     bgeu    t0, t1, .data_copy_done
-    la      t2, __sdata_rom
+    la      t2, __s_rom_copy
 
 .data_copy_word:
     lw      t3, 0(t2)
@@ -74,9 +74,11 @@ _start:
     la      s0, _CURRENT_MODE
     sw      zero, 0(s0)
 
-    jal     _system_entry
+    la      t0, _system_entry
+    jalr    t0
 
-    j       __return_to_user
+    la      t0, __return_to_user
+    jr      t0
 
     .cfi_endproc
     "
@@ -84,7 +86,7 @@ _start:
 
 // Trap handler (not vectored)
 global_asm!(
-    ".section .init.trap_handler, \"ax\"
+    ".section .trap_handler, \"ax\"
     .global _trap_handler
 _trap_handler:
     .cfi_startproc
@@ -108,7 +110,7 @@ _trap_handler:
 
     sw      x1,  (31 * 4)(sp)
     /* Skip x2 = SP */
-    /* Skip x3 = GP */
+    sw      x3,  (30 * 4)(sp)
     sw      x4,  (29 * 4)(sp)
     sw      x5,  (28 * 4)(sp)
     sw      x6,  (27 * 4)(sp)
@@ -159,7 +161,7 @@ __return_to_user:
 
     lw      x1, (31 * 4)(sp)
     /* Skip x2 = SP */
-    /* Skip x3 = GP */
+    lw      x3,  (30 * 4)(sp)
     lw      x4,  (29 * 4)(sp)
     lw      x5,  (28 * 4)(sp)
     lw      x6,  (27 * 4)(sp)

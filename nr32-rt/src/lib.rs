@@ -41,6 +41,7 @@ pub fn rust_start() {
 
 /// Called for trap handling
 #[export_name = "_system_trap"]
+#[link_section = ".text.fast"]
 pub fn rust_trap() {
     let cause = riscv::register::mcause::read();
 
@@ -60,6 +61,7 @@ pub fn rust_trap() {
     }
 }
 
+#[link_section = ".text.fast"]
 fn handle_irqs() {
     let pending = unsafe { IRQ_PENDING.read() };
 
@@ -84,6 +86,7 @@ fn handle_irqs() {
     }
 }
 
+#[link_section = ".text.fast"]
 fn handle_ecall() {
     // First we have to adjust MEPC to point after the ecall instruction, otherwise it'll be
     // executed again upon return

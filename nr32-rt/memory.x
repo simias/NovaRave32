@@ -1,7 +1,7 @@
 MEMORY
 {
+    ROM (xr) : ORIGIN = 0x20000000, LENGTH = 2M
     RAM (xrw) : ORIGIN = 0x40000000, LENGTH = 2M
-    ROM (xrw) : ORIGIN = 0x20000000, LENGTH = 2M
 }
 
 PROVIDE(__estack = ORIGIN(RAM) + LENGTH(RAM));
@@ -9,13 +9,38 @@ PROVIDE(__stack_len = 2K);
 PROVIDE(__sstack = __estack - __stack_len);
 
 SECTIONS {
-    .text :
+    .text.init : ALIGN(4)
     {
+        . = . + 0x100;
         KEEP(*(.init));
+    } > ROM
+
+    .text.fast : ALIGN(4)
+    {
         . = ALIGN(4);
-        KEEP(*(.init.trap_handler));
+        /* Start of data section in RAM */
+        PROVIDE(__s_ram_copy = .);
+        KEEP(*(.trap_handler));
+        *(.text.*memcpy*);
+        *(.text.*memset*);
+        *(.text.*memset*);
+        *(.text.*compiler_builtins*);
+        *(.text.*__div*);
+        *(.text.*__udiv*);
+        *(.text.fast)
+    } > RAM AT > ROM
+
+    . = ALIGN(4);
+    /* End of copy section in RAM */
+    PROVIDE(__e_ram_copy = .);
+    /* Start of copy section in ROM pre-relocation */
+    PROVIDE(__s_rom_copy = LOADADDR(.text.fast));
+
+    .text : ALIGN(4)
+    {
         . = ALIGN(4);
         *(.text .text.*)
+        KEEP(*(.eh_frame));
     } > ROM
 
     .rodata : ALIGN(4)
@@ -28,20 +53,12 @@ SECTIONS {
     .data : ALIGN(4)
     {
         . = ALIGN(4);
-        /* Start of data section in RAM */
-        PROVIDE(__sdata = .);
         /* For GP in order to make some address calculations faster */
         PROVIDE(__global_pointer$ = . + 0x800);
 
         *(.sdata .sdata.* .sdata2 .sdata2.*);
         *(.data .data.*);
     } > RAM AT > ROM
-
-    . = ALIGN(4);
-    /* End of data section in RAM */
-    PROVIDE(__edata = .);
-    /* Start data section in ROM pre-relocation */
-    PROVIDE(__sdata_rom = LOADADDR(.data));
 
     .bss (NOLOAD) : ALIGN(4)
     {
