@@ -1,5 +1,3 @@
-#[macro_use]
-extern crate static_assertions;
 extern crate console_error_panic_hook;
 #[macro_use]
 extern crate log;
@@ -28,7 +26,7 @@ fn main() {
 pub struct NoRa32 {
     cpu: cpu::Cpu,
     sync: sync::Synchronizer,
-    rom: Box<[u32; (ROM.len >> 2) as _]>,
+    rom: Vec<u32>,
     ram: Box<[u32; (RAM.len >> 2) as _]>,
     gpu: gpu::Gpu,
     systimer: systimer::Timer,
@@ -54,7 +52,7 @@ impl NoRa32 {
         NoRa32 {
             cpu: cpu::Cpu::new(),
             sync: sync::Synchronizer::new(),
-            rom: Box::new([0; (ROM.len >> 2) as usize]),
+            rom: Vec::new(),
             ram: Box::new([0; (RAM.len >> 2) as usize]),
             gpu: gpu::Gpu::new(),
             systimer: systimer::Timer::new(),
@@ -101,14 +99,14 @@ impl NoRa32 {
 
     #[wasm_bindgen]
     pub fn load_rom(&mut self, rom: &[u8]) {
-        if (rom.len() >> 2) >= self.rom.len() {
-            error!(
-                "Loaded ROM is too large: {}B (max {}B)",
-                rom.len(),
-                self.rom.len() << 2
-            );
+        let max_rom = 128 * 1024 * 1024;
+
+        if rom.len() >= max_rom {
+            error!("Loaded ROM is too large: {}B (max {}B)", rom.len(), max_rom);
             return;
         }
+
+        self.rom.resize((rom.len() + 3) >> 2, 0);
 
         for (off, &b) in rom.iter().enumerate() {
             let rpos = off >> 2;
@@ -257,7 +255,9 @@ impl NoRa32 {
         }
 
         if let Some(off) = ROM.contains(addr) {
-            return self.rom[(off >> 2) as usize];
+            self.tick(5);
+
+            return self.rom.get((off >> 2) as usize).cloned().unwrap_or(!0);
         }
 
         if let Some(off) = IRQ_CONTROLLER.contains(addr) {
@@ -285,7 +285,8 @@ impl NoRa32 {
         }
 
         if let Some(off) = ROM.contains(addr) {
-            let word = self.rom[(off >> 2) as usize];
+            self.tick(5);
+            let word = self.rom.get((off >> 2) as usize).cloned().unwrap_or(!0);
             return (word >> ((off & 3) << 3)) as u8;
         }
 
@@ -306,7 +307,8 @@ impl NoRa32 {
         }
 
         if let Some(off) = ROM.contains(addr) {
-            let word = self.rom[(off >> 2) as usize];
+            self.tick(5);
+            let word = self.rom.get((off >> 2) as usize).cloned().unwrap_or(!0);
             return (word >> ((off & 2) << 3)) as u16;
         }
 
@@ -427,7 +429,7 @@ const INPUT_DEV: Range = Range {
 
 const ROM: Range = Range {
     base: 0x2000_0000,
-    len: 2 * 1024 * 1024,
+    len: 16 * 1024 * 1024,
 };
 
 const RAM: Range = Range {

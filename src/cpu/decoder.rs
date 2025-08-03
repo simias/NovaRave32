@@ -48,20 +48,17 @@ impl Decoder {
 
 // Retrieves the page_lut index for the given address.
 //
-// The returned value will be garbage if `addr` is not in ROM or RAM, so validation is necessary.
-//
-// Note that even in this case, the returned value is guaranteed to be less than PAGE_TOTAL
+// Panics if the address is not in ROM or RAM
 fn lut_idx(addr: u32) -> usize {
-    // The decoding is optimized based on the address layout, so it needs to be adjusted if these
-    // values ever change
-    const_assert_eq!(ROM.base, 0x2000_0000);
-    const_assert_eq!(RAM.base, 0x4000_0000);
-    const_assert_eq!(ROM.len, 2 * 1024 * 1024);
-    const_assert_eq!(RAM.len, 2 * 1024 * 1024);
+    if let Some(off) = RAM.contains(addr) {
+        return (off >> PAGE_LEN_SHIFT) as usize;
+    }
 
-    let addr = (addr & (ROM.len - 1)) | ((addr >> 9) & ROM.len);
+    if let Some(off) = ROM.contains(addr) {
+        return ((off + ROM.len) >> PAGE_LEN_SHIFT) as usize;
+    }
 
-    (addr >> PAGE_LEN_SHIFT) as usize
+    panic!("Invalid PC {:x}", addr);
 }
 
 /// Returns the base address of a page from its lut_idx
@@ -134,7 +131,7 @@ fn decode_page(m: &mut NoRa32, lut_idx: usize) -> usize {
         // We decode one instruction every other byte
         let woff = (mem_off as usize) + (op_off >> 1);
 
-        let w = mem[woff];
+        let w = mem.get(woff).cloned().unwrap_or(!0);
 
         let pc = base + ((op_off as u32) << 1);
 

@@ -501,7 +501,11 @@ pub fn step(m: &mut NoRa32) {
         Instruction::Jal { rd, tpc } => {
             m.cpu.xset(rd, m.cpu.pc);
             m.cpu.pc = tpc;
-            m.tick(1);
+            if RAM.contains(tpc).is_some() {
+                m.tick(1);
+            } else {
+                m.tick(50);
+            }
         }
         Instruction::Jalr { rd, rs1, off } => {
             let base = m.cpu.xget(rs1);
@@ -510,7 +514,11 @@ pub fn step(m: &mut NoRa32) {
 
             m.cpu.xset(rd, m.cpu.pc);
             m.cpu.pc = target;
-            m.tick(1);
+            if RAM.contains(target).is_some() {
+                m.tick(1);
+            } else {
+                m.tick(50);
+            }
         }
         Instruction::Beq { rs1, rs2, tpc } => {
             let a = m.cpu.xget(rs1);
@@ -784,10 +792,16 @@ fn branch(m: &mut NoRa32, target_pc: u32) {
 
     // To make emulation simpler, we don't have any cache. However to make the emulation profile a
     // bit more "realistic" and penalize excessive branching, we add a penalty for far branches
-    let cost = 20.min(dist >> 7);
+    let mut cost = 20.min(dist >> 7);
+
+    if RAM.contains(target_pc).is_none() {
+        // Penalize running outside of RAM
+        cost = (cost + 1) * 10;
+    }
+
+    m.cpu.pc = target_pc;
 
     m.tick(cost as CycleCounter);
-    m.cpu.pc = target_pc;
 }
 
 #[derive(Copy, Clone, PartialEq, Eq, Debug)]
