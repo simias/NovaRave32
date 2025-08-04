@@ -34,6 +34,9 @@ pub struct Cpu {
     reservation: Option<u32>,
     /// Set to true if the CPU is halted until an IRQ occurs
     wfi: bool,
+    /// Instruction cache timing emulation. No caching is actually implemented here, it's just to
+    /// get more realistic timings.
+    icache: ICache,
 }
 
 impl Cpu {
@@ -53,6 +56,7 @@ impl Cpu {
             mepc: 0,
             reservation: None,
             wfi: false,
+            icache: ICache::new(),
         }
     }
 
@@ -321,9 +325,23 @@ pub fn set_meip(m: &mut NoRa32, meip: bool) {
 pub fn step(m: &mut NoRa32) {
     debug_assert!(!m.cpu.wfi);
 
-    m.tick(1);
-
     let pc = m.cpu.pc;
+
+    let nticks = match m.cpu.icache.fetch(pc) {
+        ICacheFetchResult::Hit => 1,
+        ICacheFetchResult::Miss => {
+            // Cache miss timings
+            if RAM.contains(pc).is_some() {
+                // Fetch from RAM
+                4
+            } else {
+                // Fetch from cartridge
+                60
+            }
+        }
+    };
+
+    m.tick(nticks);
 
     let (inst, npc) = decoder::fetch_instruction(m, pc);
 
@@ -502,11 +520,6 @@ pub fn step(m: &mut NoRa32) {
         Instruction::Jal { rd, tpc } => {
             m.cpu.xset(rd, m.cpu.pc);
             m.cpu.pc = tpc;
-            if RAM.contains(tpc).is_some() {
-                m.tick(1);
-            } else {
-                m.tick(50);
-            }
         }
         Instruction::Jalr { rd, rs1, off } => {
             let base = m.cpu.xget(rs1);
@@ -515,18 +528,13 @@ pub fn step(m: &mut NoRa32) {
 
             m.cpu.xset(rd, m.cpu.pc);
             m.cpu.pc = target;
-            if RAM.contains(target).is_some() {
-                m.tick(1);
-            } else {
-                m.tick(50);
-            }
         }
         Instruction::Beq { rs1, rs2, tpc } => {
             let a = m.cpu.xget(rs1);
             let b = m.cpu.xget(rs2);
 
             if a == b {
-                branch(m, tpc)
+                m.cpu.pc = tpc
             }
         }
         Instruction::Bne { rs1, rs2, tpc } => {
@@ -534,7 +542,7 @@ pub fn step(m: &mut NoRa32) {
             let b = m.cpu.xget(rs2);
 
             if a != b {
-                branch(m, tpc)
+                m.cpu.pc = tpc
             }
         }
         Instruction::Blt { rs1, rs2, tpc } => {
@@ -542,7 +550,7 @@ pub fn step(m: &mut NoRa32) {
             let b = m.cpu.xget(rs2) as i32;
 
             if a < b {
-                branch(m, tpc)
+                m.cpu.pc = tpc
             }
         }
         Instruction::Bge { rs1, rs2, tpc } => {
@@ -550,7 +558,7 @@ pub fn step(m: &mut NoRa32) {
             let b = m.cpu.xget(rs2) as i32;
 
             if a >= b {
-                branch(m, tpc)
+                m.cpu.pc = tpc
             }
         }
         Instruction::Bltu { rs1, rs2, tpc } => {
@@ -558,7 +566,7 @@ pub fn step(m: &mut NoRa32) {
             let b = m.cpu.xget(rs2);
 
             if a < b {
-                branch(m, tpc)
+                m.cpu.pc = tpc
             }
         }
         Instruction::Bgeu { rs1, rs2, tpc } => {
@@ -566,7 +574,7 @@ pub fn step(m: &mut NoRa32) {
             let b = m.cpu.xget(rs2);
 
             if a >= b {
-                branch(m, tpc)
+                m.cpu.pc = tpc
             }
         }
         Instruction::Lbu { rd, rs1, off } => {
@@ -785,24 +793,14 @@ pub fn step(m: &mut NoRa32) {
         Instruction::Invalid16(op) => {
             panic!("Encountered invalid instruction {:x} {:?}", op, m.cpu)
         }
+        Instruction::FenceI => {
+            // Instruction fence. A very expensive instruction for us since it clears the decoder,
+            // so penalize it heavily to disincentivize overuse
+            m.tick(10_000);
+            m.cpu.icache.invalidate();
+            m.cpu.decoder.invalidate();
+        }
     }
-}
-
-fn branch(m: &mut NoRa32, target_pc: u32) {
-    let dist = target_pc.abs_diff(m.cpu.pc);
-
-    // To make emulation simpler, we don't have any cache. However to make the emulation profile a
-    // bit more "realistic" and penalize excessive branching, we add a penalty for far branches
-    let mut cost = 20.min(dist >> 7);
-
-    if RAM.contains(target_pc).is_none() {
-        // Penalize running outside of RAM
-        cost = (cost + 1) * 10;
-    }
-
-    m.cpu.pc = target_pc;
-
-    m.tick(cost as CycleCounter);
 }
 
 #[derive(Copy, Clone, PartialEq, Eq, Debug)]
@@ -875,4 +873,43 @@ impl Extendable for i32 {
     fn extend(self) -> u32 {
         self as u32
     }
+}
+
+/// Dummy instruction cache implementation that's only used for timing emulation.
+///
+/// Doing proper cacheline-level emulation would add some complexity due to the interplay with the
+/// RISC decoder and it's probably not useful to worry about that at this point.
+struct ICache {
+    /// 256 4-word cachelines. Since we don't actually emulate the caching, we just need to keep
+    /// track of the addresses to decide if it's a cache hit or miss.
+    tags: [u32; 0x100],
+}
+
+impl ICache {
+    fn new() -> ICache {
+        ICache { tags: [!0; 0x100] }
+    }
+
+    fn fetch(&mut self, addr: u32) -> ICacheFetchResult {
+        let tag = addr >> 4;
+
+        let bucket = (tag & 0xff) as usize;
+
+        if self.tags[bucket] == tag {
+            ICacheFetchResult::Hit
+        } else {
+            self.tags[bucket] = tag;
+            ICacheFetchResult::Miss
+        }
+    }
+
+    fn invalidate(&mut self) {
+        self.tags = [!0; 0x100];
+    }
+}
+
+#[derive(PartialEq, Eq, Copy, Clone)]
+enum ICacheFetchResult {
+    Hit,
+    Miss,
 }

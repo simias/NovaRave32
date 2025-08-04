@@ -70,6 +70,8 @@ _start:
 
 .bss_zero_done:
 
+    fence.i
+
     /* Switch mode to kernel */
     la      s0, _CURRENT_MODE
     sw      zero, 0(s0)

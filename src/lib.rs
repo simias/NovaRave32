@@ -255,7 +255,7 @@ impl NoRa32 {
         }
 
         if let Some(off) = ROM.contains(addr) {
-            self.tick(5);
+            self.tick(20);
 
             return self.rom.get((off >> 2) as usize).cloned().unwrap_or(!0);
         }
@@ -285,7 +285,7 @@ impl NoRa32 {
         }
 
         if let Some(off) = ROM.contains(addr) {
-            self.tick(5);
+            self.tick(20);
             let word = self.rom.get((off >> 2) as usize).cloned().unwrap_or(!0);
             return (word >> ((off & 3) << 3)) as u8;
         }
@@ -307,7 +307,7 @@ impl NoRa32 {
         }
 
         if let Some(off) = ROM.contains(addr) {
-            self.tick(5);
+            self.tick(20);
             let word = self.rom.get((off >> 2) as usize).cloned().unwrap_or(!0);
             return (word >> ((off & 2) << 3)) as u16;
         }

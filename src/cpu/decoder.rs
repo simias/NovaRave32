@@ -41,8 +41,17 @@ impl Decoder {
         Decoder {
             pages: Vec::new(),
             page_lut: vec![None; PAGE_TOTAL],
-            last_used_page: (0, 0),
+            last_used_page: (!0, 0),
         }
+    }
+
+    pub fn invalidate(&mut self) {
+        info!("Flushing {} decoded pages", self.pages.len());
+        self.pages.clear();
+        for e in self.page_lut.iter_mut() {
+            *e = None;
+        }
+        self.last_used_page = (!0, 0);
     }
 }
 
@@ -190,6 +199,7 @@ fn decode_page(m: &mut NoRa32, lut_idx: usize) -> usize {
                     match funct3 {
                         // FENCE
                         0b000 => Instruction::nop(),
+                        0b001 => Instruction::FenceI,
                         _ => unkn,
                     }
                 }
@@ -901,6 +911,7 @@ pub enum Instruction {
     },
     Ecall,
     Wfi,
+    FenceI,
 }
 
 impl Instruction {
