@@ -8,15 +8,6 @@ pub enum PrivilegeMode {
     User = 1,
 }
 
-/// To keep track of what more we're in since RISCV does not let us simply check the current
-/// privilege mode
-#[no_mangle]
-pub static mut _CURRENT_MODE: PrivilegeMode = PrivilegeMode::Kernel;
-
-pub fn current_mode() -> PrivilegeMode {
-    unsafe { _CURRENT_MODE }
-}
-
 // Entry point. This is the first thing executed by the CPU.
 global_asm!(
     ".section .init, \"ax\"
@@ -71,10 +62,6 @@ _start:
 .bss_zero_done:
 
     fence.i
-
-    /* Switch mode to kernel */
-    la      s0, _CURRENT_MODE
-    sw      zero, 0(s0)
 
     la      t0, _system_entry
     jalr    t0
@@ -145,18 +132,10 @@ _trap_handler:
     /* Swap system stack in */
     csrrw   sp, mscratch, sp
 
-    /* Switch mode to kernel */
-    la      s0, _CURRENT_MODE
-    sw      zero, 0(s0)
-
     jal     _system_trap
 
     .global __return_to_user
 __return_to_user:
-
-    /* Switch mode to user */
-    li      t1, 1
-    sw      t1, 0(s0)
 
     /* Swap to task stack */
     csrrw   sp, mscratch, sp

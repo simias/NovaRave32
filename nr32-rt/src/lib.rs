@@ -144,9 +144,9 @@ fn handle_ecall() {
             sched.exit_current_task();
             return;
         }
-        syscall::SYS_ALLOC => ALLOCATOR.raw_alloc(arg0, arg1) as usize,
+        syscall::SYS_ALLOC => ALLOCATOR.heap().raw_alloc(arg0, arg1) as usize,
         syscall::SYS_FREE => {
-            ALLOCATOR.raw_free(arg0 as *mut u8, arg1, arg2);
+            ALLOCATOR.heap().raw_free(arg0 as *mut u8);
             0
         }
         syscall::SYS_INPUT_DEV => {
@@ -203,9 +203,7 @@ fn system_init() {
         heap_size / 1024
     );
 
-    unsafe { ALLOCATOR.init(heap_start, heap_size) };
-
-    ALLOCATOR.log_heap_stats();
+    unsafe { ALLOCATOR.heap().init(heap_start, heap_size) };
 
     unsafe {
         // ACK everything just in case

@@ -109,6 +109,7 @@ pub fn main() {
 
         // End draw
         send_to_gpu(0x02 << 24);
+
         wait_for_vsync();
     }
 }
