@@ -75,7 +75,7 @@ SECTIONS {
         . = . + 2K;
         PROVIDE(__estack = .);
         PROVIDE(__sheap = .);
-        PROVIDE(__eheap = ORIGIN(RAM) + 2M);
+        PROVIDE(__eheap = ORIGIN(RAM) + LENGTH(RAM));
     }
 
     /DISCARD/ : {

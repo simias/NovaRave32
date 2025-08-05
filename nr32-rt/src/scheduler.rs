@@ -2,7 +2,8 @@ use crate::{
     asm::{_idle_task, _task_runner},
     MTIME_HZ,
 };
-use alloc::{boxed::Box, vec, vec::Vec};
+use alloc::vec::Vec;
+use core::ptr::NonNull;
 use spin::{Mutex, MutexGuard};
 
 pub struct Scheduler {
@@ -33,12 +34,20 @@ impl Scheduler {
 
         // Create the idle task.
         let idle_task = unsafe { core::mem::transmute::<usize, fn()>(_idle_task as usize) };
-        self.spawn_task(idle_task as usize, 0, i32::MIN, 0);
+        self.spawn_task(TaskType::System, idle_task as usize, 0, i32::MIN, 0);
         self.switch_to_task(0);
     }
 
-    pub fn spawn_task(&mut self, entry: usize, data: usize, prio: i32, stack_size: usize) {
-        let (stack, sp) = stack_alloc(stack_size + BANKED_REGISTER_LEN);
+    pub fn spawn_task(
+        &mut self,
+        ty: TaskType,
+        entry: usize,
+        data: usize,
+        prio: i32,
+        stack_size: usize,
+    ) {
+        let (stack, sp) = stack_alloc(ty, stack_size + BANKED_REGISTER_LEN);
+
         // Put function in banked a1 and data in banked a0
         unsafe {
             let p = sp - BANKED_REGISTER_LEN + 23 * 4;
@@ -56,6 +65,7 @@ impl Scheduler {
             ra: _task_runner as usize,
             state: TaskState::Running,
             prio,
+            ty,
             stack,
         };
 
@@ -76,7 +86,8 @@ impl Scheduler {
         let t = &mut self.tasks[self.cur_task];
         t.state = TaskState::Dead;
         t.prio = i32::MIN;
-        t.stack = Box::new([]);
+
+        stack_free(t.ty, t.stack);
 
         self.schedule()
     }
@@ -250,8 +261,12 @@ struct Task {
     sp: usize,
     /// Task priority (higher values means higher priority)
     prio: i32,
-    stack: Box<[StackWord]>,
+    ty: TaskType,
+    /// Pointer to the stack buffer
+    stack: NonNull<u8>,
 }
+
+unsafe impl Send for Task {}
 
 impl Task {
     #[link_section = ".text.fast"]
@@ -283,34 +298,47 @@ fn schedule_preempt(until: u64) {
     }
 }
 
-/// Type used to force the right alignment for the stack alloc
-#[repr(align(16))]
-#[derive(Copy, Clone)]
-#[allow(dead_code)]
-struct StackWord(u32);
-
 /// Allocate a `stack_size`-byte long, 0-initialized stack and return a 16-byte aligned pointer to
 /// the top
-fn stack_alloc(stack_size: usize) -> (Box<[StackWord]>, usize) {
+fn stack_alloc(ty: TaskType, stack_size: usize) -> (NonNull<u8>, usize) {
     let stack_size = (stack_size + 0xf) & !0xf;
 
-    let sw_size = core::mem::size_of::<StackWord>();
+    let heap = match ty {
+        TaskType::System => crate::ALLOCATOR.system_heap(),
+        TaskType::User => crate::ALLOCATOR.user_heap(),
+    };
 
-    let mut stack = vec![StackWord(0); stack_size / sw_size].into_boxed_slice();
+    let ptr = heap.raw_alloc(stack_size, 16);
 
-    let ptr = stack.as_mut_ptr() as usize;
+    let ptr = match NonNull::new(ptr) {
+        Some(p) => p,
+        None => panic!("Couldn't allocate stack of {}B", stack_size),
+    };
 
-    let top = ptr + stack_size;
+    let top = (ptr.as_ptr() as usize) + stack_size;
 
-    debug!(
-        "Allocated stack of {}B starting at {:x}",
-        stack.len() * sw_size,
-        top
-    );
+    debug!("Allocated stack of {}B starting at {:x}", stack_size, top);
 
     assert!(top & 0xf == 0, "Allocated stack is not correctly aligned!");
 
-    (stack, top)
+    (ptr, top)
+}
+
+fn stack_free(ty: TaskType, stack: NonNull<u8>) {
+    let heap = match ty {
+        TaskType::System => crate::ALLOCATOR.system_heap(),
+        TaskType::User => crate::ALLOCATOR.user_heap(),
+    };
+
+    heap.raw_free(stack.as_ptr());
+}
+
+#[derive(Copy, Clone, PartialEq, Eq)]
+pub enum TaskType {
+    /// Kernel task
+    System,
+    /// User task
+    User,
 }
 
 /// If two or more tasks with equal priority want to run at the same time, how long should they be

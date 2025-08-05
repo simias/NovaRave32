@@ -1,4 +1,3 @@
-
 /// Suspend task for [a1:a0] MTIME ticks
 pub const SYS_SLEEP: usize = 0x01;
 /// Put task to sleep until VSYNC

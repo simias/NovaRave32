@@ -3,31 +3,42 @@ use core::ptr;
 use spin::{Mutex, MutexGuard};
 
 pub struct Allocator {
-    heap: Mutex<NrHeap>,
+    /// Heap for use by the kernel
+    system_heap: Mutex<NrHeap>,
+    /// Heap for use by the userland
+    user_heap: Mutex<NrHeap>,
 }
 
 impl Allocator {
     pub const fn empty() -> Allocator {
         Allocator {
-            heap: Mutex::new(NrHeap::empty()),
+            system_heap: Mutex::new(NrHeap::empty()),
+            user_heap: Mutex::new(NrHeap::empty()),
         }
     }
 
-    pub fn heap<'a>(&'a self) -> MutexGuard<'a, NrHeap> {
-        match self.heap.try_lock() {
+    pub fn system_heap<'a>(&'a self) -> MutexGuard<'a, NrHeap> {
+        match self.system_heap.try_lock() {
             Some(h) => h,
-            None => panic!("Couldn't lock allocator!"),
+            None => panic!("Couldn't lock system allocator!"),
+        }
+    }
+
+    pub fn user_heap<'a>(&'a self) -> MutexGuard<'a, NrHeap> {
+        match self.user_heap.try_lock() {
+            Some(h) => h,
+            None => panic!("Couldn't lock system allocator!"),
         }
     }
 }
 
 unsafe impl GlobalAlloc for Allocator {
     unsafe fn alloc(&self, layout: Layout) -> *mut u8 {
-        self.heap().raw_alloc(layout.size(), layout.align())
+        self.system_heap().raw_alloc(layout.size(), layout.align())
     }
 
     unsafe fn dealloc(&self, ptr: *mut u8, _layout: Layout) {
-        self.heap().raw_free(ptr)
+        self.system_heap().raw_free(ptr)
     }
 }
 
@@ -114,7 +125,7 @@ impl NrHeap {
             }
         }
 
-        error!("Alloc of size {} failed", align);
+        error!("Alloc of size {} failed", size);
         return ptr::null_mut();
     }
 

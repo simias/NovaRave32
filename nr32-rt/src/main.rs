@@ -134,16 +134,16 @@ fn handle_ecall() {
             let prio = arg2 as i32;
             let stack_size = arg3;
 
-            sched.spawn_task(entry, data, prio, stack_size);
+            sched.spawn_task(scheduler::TaskType::User, entry, data, prio, stack_size);
             0
         }
         syscall::SYS_EXIT => {
             sched.exit_current_task();
             return;
         }
-        syscall::SYS_ALLOC => ALLOCATOR.heap().raw_alloc(arg0, arg1) as usize,
+        syscall::SYS_ALLOC => ALLOCATOR.user_heap().raw_alloc(arg0, arg1) as usize,
         syscall::SYS_FREE => {
-            ALLOCATOR.heap().raw_free(arg0 as *mut u8);
+            ALLOCATOR.user_heap().raw_free(arg0 as *mut u8);
             0
         }
         syscall::SYS_INPUT_DEV => {
@@ -195,13 +195,13 @@ fn system_init() {
         stack_size / 1024
     );
     info!(
-        "Heap:         0x{:x?} - 0x{:x?} [{}KiB]",
+        "System heap:  0x{:x?} - 0x{:x?} [{}KiB]",
         heap_start,
         heap_end,
         heap_size / 1024
     );
 
-    unsafe { ALLOCATOR.heap().init(heap_start, heap_size) };
+    unsafe { ALLOCATOR.system_heap().init(heap_start, heap_size) };
 
     unsafe {
         // ACK everything just in case
