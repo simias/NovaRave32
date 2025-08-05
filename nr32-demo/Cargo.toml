@@ -1,11 +1,10 @@
 [package]
-name = "nr32boot"
+name = "nr32-demo"
 version = "0.1.0"
 edition = "2021"
 
 [dependencies]
 log = "0.4"
-nr32-rt = { path = "../nr32-rt" }
 
 [profile.dev]
 panic = "abort"

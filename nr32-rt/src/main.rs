@@ -1,4 +1,7 @@
+//! BIOS/minimalist kernel for the NovaRave32
+
 #![no_std]
+#![no_main]
 
 extern crate alloc;
 
@@ -8,9 +11,7 @@ extern crate log;
 mod allocator;
 mod asm;
 mod console;
-pub mod gpu;
 mod input_dev;
-pub mod math;
 mod scheduler;
 pub mod syscall;
 pub mod utils;
@@ -23,11 +24,6 @@ extern "C" {
     static __eheap: u8;
 }
 
-// Declared by the main project
-extern "C" {
-    fn nr32_main();
-}
-
 /// The system entry must schedule the first task (by setting mepc, mscratch etc...) and return
 #[export_name = "_system_entry"]
 pub fn rust_start() {
@@ -35,7 +31,8 @@ pub fn rust_start() {
 
     let mut sched = scheduler::get();
     sched.start();
-    sched.spawn_task(nr32_main as usize, 0, 0, TASK_STACK_SIZE);
+    info!("Kernel is running");
+    // sched.spawn_task(nr32_main as usize, 0, 0, TASK_STACK_SIZE);
     sched.schedule();
 }
 
@@ -190,6 +187,7 @@ fn system_init() {
         .unwrap();
 
     info!("BOOTING v{}", env!("CARGO_PKG_VERSION"));
+
     info!(
         "System stack: 0x{:x?} - 0x{:x?} [{:x}KiB]",
         stack_start,
@@ -242,5 +240,3 @@ const MTIME_HZ: u32 = 44_100 * 16;
 const IRQ_PENDING: *mut usize = 0xffff_ffe0 as *mut usize;
 /// External Interrupt Controller: IRQ enabled register
 const IRQ_ENABLED: *mut usize = 0xffff_ffe4 as *mut usize;
-
-const TASK_STACK_SIZE: usize = 4096 - 128;

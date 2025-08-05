@@ -3,18 +3,40 @@
 
 #[macro_use]
 extern crate log;
+extern crate alloc;
 
-use core::time::Duration;
-use nr32_rt::gpu::send_to_gpu;
-use nr32_rt::math::{
+mod gpu;
+mod math;
+mod syscall;
+
+use crate::math::{
     matrix,
     matrix::{MAT0, MAT1, MAT2, MAT3, MAT4, MAT5, MAT7},
     Angle, Fp32,
 };
-use nr32_rt::syscall::{input_device, sleep, wait_for_vsync, ThreadBuilder};
+use crate::syscall::{input_device, sleep, wait_for_vsync, ThreadBuilder};
+use core::time::Duration;
+use gpu::send_to_gpu;
 
-#[export_name = "nr32_main"]
-pub fn main() {
+#[global_allocator]
+static ALLOCATOR: syscall::Allocator = syscall::Allocator;
+
+mod panic_handler {
+    // use crate::utils::shutdown;
+    use core::panic::PanicInfo;
+
+    #[inline(never)]
+    #[panic_handler]
+    fn panic(info: &PanicInfo) -> ! {
+        error!("!PANIC!");
+        error!("{}", info);
+        // shutdown(!0)
+        panic!();
+    }
+}
+
+#[no_mangle]
+pub fn nr32_main() {
     info!("Task is running!");
 
     start_audio();

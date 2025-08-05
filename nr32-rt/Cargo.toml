@@ -9,3 +9,16 @@ spin = { version = "0.9", features = [ "spin_mutex" ] }
 
 [dependencies.riscv]
 version = "0.12"
+
+[profile.dev]
+panic = "abort"
+# opt-level = 3
+incremental = true
+overflow-checks = true
+lto = true
+
+[profile.release]
+panic = "abort"
+lto = true
+codegen-units = 1
+overflow-checks = false

@@ -1,12 +1,10 @@
 MEMORY
 {
-    ROM (xr) : ORIGIN = 0x20000000, LENGTH = 2M
-    RAM (xrw) : ORIGIN = 0x40000000, LENGTH = 2M
+    ROM (xr) : ORIGIN = 0x20000000, LENGTH = 128K
+    RAM (xrw) : ORIGIN = 0x40000000, LENGTH = 32K
 }
 
-PROVIDE(__estack = ORIGIN(RAM) + LENGTH(RAM));
 PROVIDE(__stack_len = 2K);
-PROVIDE(__sstack = __estack - __stack_len);
 
 SECTIONS {
     .text.init : ALIGN(4)
@@ -36,21 +34,20 @@ SECTIONS {
     /* Start of copy section in ROM pre-relocation */
     PROVIDE(__s_rom_copy = LOADADDR(.text.fast));
 
-    .text : ALIGN(4)
+    .text :
     {
         . = ALIGN(4);
         *(.text .text.*)
-        KEEP(*(.eh_frame));
     } > ROM
 
-    .rodata : ALIGN(4)
+    .rodata :
     {
         . = ALIGN(4);
         *(.srodata .srodata.*);
         *(.rodata .rodata.*);
     } > ROM
 
-    .data : ALIGN(4)
+    .data :
     {
         . = ALIGN(4);
         /* For GP in order to make some address calculations faster */
@@ -60,7 +57,7 @@ SECTIONS {
         *(.data .data.*);
     } > RAM AT > ROM
 
-    .bss (NOLOAD) : ALIGN(4)
+    .bss (NOLOAD) :
     {
         . = ALIGN(4);
         PROVIDE(__sbss = .);
@@ -68,16 +65,24 @@ SECTIONS {
         *(.sbss .sbss.* .bss .bss.*);
     } > RAM
 
-    . = ALIGN(4);
     PROVIDE(__ebss = .);
-    PROVIDE(__sheap = .);
 
-    /* Reserve space for the stack */
+    /* System stack */
     .stack (NOLOAD) :
     {
-    . = ABSOLUTE(__sstack);
-    PROVIDE(__eheap = .);
-    } > RAM
+        . = ALIGN(16);
+        PROVIDE(__sstack = .);
+        . = . + 2K;
+        PROVIDE(__estack = .);
+        PROVIDE(__sheap = .);
+        PROVIDE(__eheap = ORIGIN(RAM) + 2M);
+    }
+
+    /DISCARD/ : {
+        /* We don't unwind */
+        *(.eh_frame);
+        *(.eh_frame_hdr);
+    }
 }
 
 _hart_stack_size = 1K;
