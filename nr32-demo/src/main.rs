@@ -15,6 +15,7 @@ use crate::math::{
     Angle, Fp32,
 };
 use crate::syscall::{input_device, sleep, wait_for_vsync, ThreadBuilder};
+use core::arch::asm;
 use core::time::Duration;
 use gpu::send_to_gpu;
 

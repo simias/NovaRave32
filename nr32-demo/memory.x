@@ -1,14 +1,10 @@
 MEMORY
 {
     /* The first 128K of the ROM are reserved for the kernel */
-    ROM (xr) : ORIGIN = 0x20000000 + 128K, LENGTH = 16M - 128K
+    ROM (xr) : ORIGIN = 0x20000000 + 128K, LENGTH = 64M - 128K
     /* The first 32K of RAM are reserved for the kernel */
     RAM (xrw) : ORIGIN = 0x40000000 + 32K, LENGTH = 2M
 }
-
-PROVIDE(__estack = ORIGIN(RAM) + LENGTH(RAM));
-PROVIDE(__stack_len = 2K);
-PROVIDE(__sstack = __estack - __stack_len);
 
 ENTRY(nr32_main);
 
@@ -17,7 +13,7 @@ SECTIONS {
     .text : ALIGN(4)
     {
         *(.text .text.*);
-    } > RAM
+    } > RAM AT > ROM
 
     /* Since we don't have virtual memory there's no point in splitting rodata
      * away */
@@ -25,13 +21,13 @@ SECTIONS {
     {
         . = ALIGN(4);
         /* For GP in order to make some address calculations faster */
-        PROVIDE(__global_pointer$ = . + 0x800);
+        PROVIDE(__global_pointer$ = . + 0x7f0);
 
         *(.sdata .sdata.* .sdata2 .sdata2.*);
         *(.srodata .srodata.*);
         *(.data .data.*);
         *(.rodata .rodata.*);
-    } > RAM
+    } > RAM AT > ROM
 
     .bss (NOLOAD) : ALIGN(4)
     {

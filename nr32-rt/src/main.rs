@@ -10,11 +10,12 @@ extern crate log;
 
 mod allocator;
 mod asm;
+mod bootscript;
 mod console;
 mod input_dev;
 mod scheduler;
-pub mod syscall;
-pub mod utils;
+mod syscall;
+mod utils;
 
 // Linker symbols
 extern "C" {
@@ -29,11 +30,16 @@ extern "C" {
 pub fn rust_start() {
     system_init();
 
-    let mut sched = scheduler::get();
-    sched.start();
+    {
+        let mut sched = scheduler::get();
+        sched.start();
+    }
     info!("Kernel is running");
-    // sched.spawn_task(nr32_main as usize, 0, 0, TASK_STACK_SIZE);
-    sched.schedule();
+    bootscript::run_boot_script();
+    {
+        let mut sched = scheduler::get();
+        sched.schedule();
+    }
 }
 
 /// Called for trap handling
@@ -133,8 +139,9 @@ fn handle_ecall() {
             let data = arg1;
             let prio = arg2 as i32;
             let stack_size = arg3;
+            let gp = task_reg(3);
 
-            sched.spawn_task(scheduler::TaskType::User, entry, data, prio, stack_size);
+            sched.spawn_task(scheduler::TaskType::User, entry, data, prio, stack_size, gp);
             0
         }
         syscall::SYS_EXIT => {

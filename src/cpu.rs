@@ -577,6 +577,13 @@ pub fn step(m: &mut NoRa32) {
                 m.cpu.pc = tpc
             }
         }
+        Instruction::Lb { rd, rs1, off } => {
+            let base = m.cpu.xget(rs1);
+            let addr = base.wrapping_add(off.extend());
+
+            let v = m.load_byte(addr);
+            m.cpu.xset(rd, v as i8 as u32)
+        }
         Instruction::Lbu { rd, rs1, off } => {
             let base = m.cpu.xget(rs1);
             let addr = base.wrapping_add(off.extend());

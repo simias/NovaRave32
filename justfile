@@ -6,31 +6,34 @@ build-wasm:
 
 build-rom $RUSTFLAGS="-C link-arg=-Tmemory.x -C target-feature=+relax":
     cd nr32-rt && cargo build --release
-    cd nr32-rt && cargo objcopy --release -- -O binary ../nr32-web/public/ROM.BIN
-    cd nr32-rt && cargo objdump --release -- -d -x -s > ../nr32-web/public/ROM.txt
+    cd nr32-demo && cargo build --release
+
+build-cart:
+    just build-rom
+    cd multitool && cargo run -- cart ../nr32-rt/target/riscv32imac-unknown-none-elf/release/nr32-rt ../nr32-demo/target/riscv32imac-unknown-none-elf/release/nr32-demo -o ../nr32-web/public/cart.nr32
 
 web-build:
     cd nr32-web && npm run build
 
 build:
     just build-wasm
-    just build-rom
+    just build-cart
     just web-build
 
 format:
     cargo fmt
-    cd nr32boot && cargo fmt
+    cd nr32-demo && cargo fmt
     cd nr32-rt && cargo fmt
     cd nr32-web && npx prettier --write .
 
 lint:
     cargo clippy
-    cd nr32boot && cargo clippy
+    cd nr32-demo && cargo clippy
     cd nr32-rt && cargo clippy
     cd nr32-web && npx eslint
 
 web-dev:
     just build-wasm
-    just build-rom
+    just build-cart
     cd nr32-web && npm run dev
 

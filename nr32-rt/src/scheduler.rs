@@ -34,7 +34,7 @@ impl Scheduler {
 
         // Create the idle task.
         let idle_task = unsafe { core::mem::transmute::<usize, fn()>(_idle_task as usize) };
-        self.spawn_task(TaskType::System, idle_task as usize, 0, i32::MIN, 0);
+        self.spawn_task(TaskType::System, idle_task as usize, 0, i32::MIN, 0, 0);
         self.switch_to_task(0);
     }
 
@@ -45,19 +45,22 @@ impl Scheduler {
         data: usize,
         prio: i32,
         stack_size: usize,
+        gp: usize,
     ) {
         let (stack, sp) = stack_alloc(ty, stack_size + BANKED_REGISTER_LEN);
 
         // Put function in banked a1 and data in banked a0
         unsafe {
-            let p = sp - BANKED_REGISTER_LEN + 23 * 4;
+            let p = sp - BANKED_REGISTER_LEN;
 
             let p = p as *mut usize;
 
             // A0
-            *p = data;
+            *(p.offset(23)) = data;
             // A1
-            *(p.offset(-1)) = entry;
+            *(p.offset(22)) = entry;
+            // GP
+            *(p.offset(30)) = gp;
         };
 
         let new_task = Task {

@@ -184,6 +184,7 @@ fn decode_page(m: &mut NoRa32, lut_idx: usize) -> usize {
                     let off = imm_20_se(op);
 
                     match funct3 {
+                        0b000 => Instruction::Lb { rd, rs1, off },
                         // LH
                         0b001 => Instruction::Lh { rd, rs1, off },
                         // LW
@@ -837,6 +838,11 @@ pub enum Instruction {
     MRet,
 
     // Memory access
+    Lb {
+        rd: Reg,
+        rs1: Reg,
+        off: i16,
+    },
     Lbu {
         rd: Reg,
         rs1: Reg,

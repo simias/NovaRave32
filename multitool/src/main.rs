@@ -6,6 +6,7 @@ extern crate anyhow;
 mod audio;
 mod model;
 mod cart;
+mod utils;
 
 use anyhow::Result;
 use clap::{Parser, Subcommand};
@@ -86,6 +87,13 @@ enum Commands {
         /// Bootloader loaded at the start of the cartridge (ELF format)
         boot_elf: PathBuf,
 
+        /// Main program started by the bootloader (ELF format)
+        main_elf: PathBuf,
+
+        /// Stack size for the main stack
+        #[arg(long, default_value_t = 4096)]
+        stack_size: u32,
+
         /// NR32 file to dump the resulting image
         #[arg(short, long)]
         output: Option<PathBuf>,
@@ -95,7 +103,7 @@ enum Commands {
 fn main() -> Result<()> {
     let cli = Cli::parse();
 
-    let log_level = if cli.verbose { "debug" } else { "warn" };
+    let log_level = if cli.verbose { "debug" } else { "info" };
     env_logger::Builder::from_env(env_logger::Env::default().default_filter_or(log_level)).init();
 
     match cli.command {
@@ -165,14 +173,17 @@ fn main() -> Result<()> {
         }
         Commands::Cart {
             boot_elf,
+            main_elf,
+            stack_size,
             output,
         } => {
             let mut cart = cart::Cart::new();
 
             cart.load_bootloader(boot_elf)?;
+            cart.load_main(main_elf, stack_size)?;
 
             if let Some(out) = output {
-                info!("Dumping {}B to {}", cart.len(), out.display());
+                info!("Dumping {} to {}", utils::format_size(cart.len() as _), out.display());
                 let mut out = BufWriter::new(File::create(out)?);
                 cart.dump(&mut out)?;
             }
