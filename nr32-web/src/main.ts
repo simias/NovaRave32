@@ -26,7 +26,7 @@ async function main() {
 
   const emu = await Emulator.build(canvas);
 
-  const rom = await fetchROM('./ROM.BIN');
+  const rom = await fetchROM('./cart.nr32');
 
   emu.loadRom(rom);
 

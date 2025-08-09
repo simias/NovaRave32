@@ -5,6 +5,7 @@ extern crate anyhow;
 
 mod audio;
 mod model;
+mod cart;
 
 use anyhow::Result;
 use clap::{Parser, Subcommand};
@@ -80,6 +81,15 @@ enum Commands {
         #[arg(long)]
         start: Option<f32>,
     },
+    /// Build cartridge image
+    Cart {
+        /// Bootloader loaded at the start of the cartridge (ELF format)
+        boot_elf: PathBuf,
+
+        /// NR32 file to dump the resulting image
+        #[arg(short, long)]
+        output: Option<PathBuf>,
+    }
 }
 
 fn main() -> Result<()> {
@@ -151,6 +161,20 @@ fn main() -> Result<()> {
                 info!("Dumping audio to {}", out.display());
                 let mut out = BufWriter::new(File::create(out)?);
                 buf.dump_nrad(&mut out)?
+            }
+        }
+        Commands::Cart {
+            boot_elf,
+            output,
+        } => {
+            let mut cart = cart::Cart::new();
+
+            cart.load_bootloader(boot_elf)?;
+
+            if let Some(out) = output {
+                info!("Dumping {}B to {}", cart.len(), out.display());
+                let mut out = BufWriter::new(File::create(out)?);
+                cart.dump(&mut out)?;
             }
         }
     }

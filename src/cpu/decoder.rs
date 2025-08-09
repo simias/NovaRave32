@@ -4,7 +4,7 @@ use super::{Extendable, Reg};
 use crate::{NoRa32, RAM, ROM};
 
 /// Number of bytes per instruction page as a power of two
-const PAGE_LEN_SHIFT: usize = 11;
+const PAGE_LEN_SHIFT: usize = 12;
 
 /// Number of bytes per instruction page
 const PAGE_LEN_BYTES: usize = 1 << PAGE_LEN_SHIFT;

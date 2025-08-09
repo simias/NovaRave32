@@ -10,6 +10,7 @@ clap = { version = "4.5.31", features = ["derive"] }
 cpal = "0.15.3"
 env_logger = "0.11.6"
 gltf = "1.4.1"
+goblin = "0.10"
 log = "0.4.26"
 rubato = "0.16.1"
 symphonia = { version = "0.5.4", features = ["wav", "flac", "ogg", "mp3"] }

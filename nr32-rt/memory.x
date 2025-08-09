@@ -1,6 +1,6 @@
 MEMORY
 {
-    ROM (xr) : ORIGIN = 0x20000000, LENGTH = 128K
+    ROM (xr) : ORIGIN = 0x20000100, LENGTH = 128K - 0x100
     RAM (xrw) : ORIGIN = 0x40000000, LENGTH = 32K
 }
 
@@ -9,7 +9,6 @@ PROVIDE(__stack_len = 2K);
 SECTIONS {
     .text.init : ALIGN(4)
     {
-        . = . + 0x100;
         KEEP(*(.init));
     } > ROM
 

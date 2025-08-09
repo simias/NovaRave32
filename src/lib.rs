@@ -429,7 +429,7 @@ const INPUT_DEV: Range = Range {
 
 const ROM: Range = Range {
     base: 0x2000_0000,
-    len: 16 * 1024 * 1024,
+    len: 64 * 1024 * 1024,
 };
 
 const RAM: Range = Range {
