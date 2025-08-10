@@ -169,7 +169,7 @@ impl NrHeap {
 
                 let nb = (*b).next;
                 if !nb.is_null() {
-                    (*nb).prev = b;
+                    (*nb).prev = pb;
                 }
             }
         }
