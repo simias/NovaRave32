@@ -13,4 +13,9 @@ name = "nr32-demo"
 version = "0.1.0"
 dependencies = [
  "log",
+ "nr32-sys",
 ]
+
+[[package]]
+name = "nr32-sys"
+version = "0.1.0"

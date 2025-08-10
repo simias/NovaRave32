@@ -3,24 +3,19 @@
 
 #[macro_use]
 extern crate log;
-extern crate alloc;
 
-mod gpu;
-mod math;
-mod syscall;
+use core::time::Duration;
 
-use crate::math::{
+use nr32_sys::gpu::send_to_gpu;
+use nr32_sys::math::{
     matrix,
     matrix::{MAT0, MAT1, MAT2, MAT3, MAT4, MAT5, MAT7},
     Angle, Fp32,
 };
-use crate::syscall::{input_device, sleep, wait_for_vsync, ThreadBuilder};
-use core::arch::asm;
-use core::time::Duration;
-use gpu::send_to_gpu;
+use nr32_sys::syscall::{input_device, sleep, wait_for_vsync, Allocator, ThreadBuilder};
 
 #[global_allocator]
-static ALLOCATOR: syscall::Allocator = syscall::Allocator;
+static ALLOCATOR: Allocator = Allocator::new();
 
 mod panic_handler {
     // use crate::utils::shutdown;

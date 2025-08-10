@@ -113,7 +113,7 @@ impl Cart {
         }
 
         let heap_start = (ram_max + 0xf) & !0xf;
-        let mut heap_size = (RAM.base + RAM.len) - heap_start;
+        let heap_size = (RAM.base + RAM.len) - heap_start;
 
         info!("Free memory after static section alloc: {}", format_size(heap_size as _));
 

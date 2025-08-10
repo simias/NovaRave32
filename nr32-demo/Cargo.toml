@@ -2,9 +2,11 @@
 name = "nr32-demo"
 version = "0.1.0"
 edition = "2021"
+description = "NovaRave32 demo application"
 
 [dependencies]
 log = "0.4"
+nr32-sys = { path = "../nr32-sys" }
 
 [profile.dev]
 panic = "abort"

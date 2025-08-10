@@ -40,6 +40,12 @@ pub fn free(ptr: *mut u8) {
 
 pub struct Allocator;
 
+impl Allocator {
+    pub const fn new() -> Allocator {
+        Allocator
+    }
+}
+
 unsafe impl GlobalAlloc for Allocator {
     unsafe fn alloc(&self, layout: Layout) -> *mut u8 {
         alloc(layout)
@@ -211,7 +217,3 @@ pub const SYS_FREE: usize = 0x06;
 /// - a1: pointer to the read/write buffer containing the data to be sent and filled with the reply
 /// - a2: how many bytes to read/write (max 16)
 pub const SYS_INPUT_DEV: usize = 0x07;
-
-pub mod events {
-    pub const EV_VSYNC: usize = 1;
-}
