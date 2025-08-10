@@ -16,6 +16,7 @@ mod input_dev;
 mod scheduler;
 mod syscall;
 mod utils;
+use core::fmt::Write;
 
 // Linker symbols
 unsafe extern "C" {
@@ -172,6 +173,21 @@ fn handle_ecall() {
                 Err(_) => !0,
             }
         }
+        syscall::SYS_DBG_PUTS => {
+            let ptr = arg0 as *const u8;
+            let len = arg1;
+
+            let buf = unsafe { core::slice::from_raw_parts(ptr, len) };
+            let tid = sched.cur_task_id();
+
+            let _ = write!(console::DebugConsole, "#{} ", tid);
+            for b in buf {
+                console::DebugConsole::putchar(*b);
+            }
+            console::DebugConsole::putchar(b'\n');
+
+            len
+        }
         _ => panic!("Unknown syscall 0x{:02x}", code),
     };
 
@@ -191,9 +207,8 @@ fn system_init() {
     let heap_end = unsafe { &__eheap as *const u8 as usize };
     let heap_size = heap_end - heap_start;
 
-    log::set_logger(&console::LOGGER)
-        .map(|()| log::set_max_level(log::LevelFilter::Trace))
-        .unwrap();
+    log::set_logger(&console::LOGGER).unwrap();
+    log::set_max_level(log::LevelFilter::Trace);
 
     info!("BOOTING v{}", env!("CARGO_PKG_VERSION"));
 

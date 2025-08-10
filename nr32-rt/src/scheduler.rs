@@ -38,6 +38,10 @@ impl Scheduler {
         self.switch_to_task(0);
     }
 
+    pub fn cur_task_id(&self) -> usize {
+        self.cur_task
+    }
+
     pub fn spawn_task(
         &mut self,
         ty: TaskType,

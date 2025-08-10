@@ -1,5 +1,5 @@
 use alloc::boxed::Box;
-use core::alloc::{GlobalAlloc, Layout};
+use core::alloc::{Layout};
 use core::arch::asm;
 use core::time::Duration;
 
@@ -38,35 +38,20 @@ pub fn free(ptr: *mut u8) {
     syscall_1(SYS_FREE, ptr as usize);
 }
 
-pub struct Allocator;
-
-impl Default for Allocator {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
-impl Allocator {
-    pub const fn new() -> Allocator {
-        Allocator
-    }
-}
-
-unsafe impl GlobalAlloc for Allocator {
-    unsafe fn alloc(&self, layout: Layout) -> *mut u8 {
-        alloc(layout)
-    }
-
-    unsafe fn dealloc(&self, ptr: *mut u8, _layout: Layout) {
-        free(ptr)
-    }
-}
-
 pub fn input_device(port: u8, data_in_out: &mut [u8]) {
     let len = data_in_out.len();
     let ptr = data_in_out.as_mut_ptr();
 
     syscall_3(SYS_INPUT_DEV, port as usize, ptr as usize, len);
+}
+
+pub fn dbg_puts(s: &str) {
+    let s = s.as_bytes();
+
+    let len = s.len();
+    let ptr = s.as_ptr();
+
+    syscall_2(SYS_DBG_PUTS, ptr as usize, len);
 }
 
 #[derive(Copy, Clone)]
@@ -195,8 +180,10 @@ fn syscall_4(code: usize, mut arg0: usize, arg1: usize, arg2: usize, arg3: usize
 
 /// Suspend task for [a1:a0] MTIME ticks
 pub const SYS_SLEEP: usize = 0x01;
+
 /// Put task to sleep until VSYNC
 pub const SYS_WAIT_FOR_VSYNC: usize = 0x02;
+
 /// Spawn a thread
 ///
 /// - a0: thread entry point
@@ -204,22 +191,33 @@ pub const SYS_WAIT_FOR_VSYNC: usize = 0x02;
 /// - a2: priority
 /// - a3: stack size
 pub const SYS_SPAWN_TASK: usize = 0x03;
+
 /// Kills the current thread
 pub const SYS_EXIT: usize = 0x04;
+
 /// Allocate memory
 ///
 /// - a0: size to allocate
 /// - a1: alignment (must be power of 2)
 pub const SYS_ALLOC: usize = 0x05;
+
 /// Free memory
 ///
 /// - a0: pointer to free
 /// - a1: block size
 /// - a2: alignment (must be power of 2)
 pub const SYS_FREE: usize = 0x06;
+
 /// Input port data exchange. Suspends task until transfer has completed.
 ///
 /// - a0: port to select
 /// - a1: pointer to the read/write buffer containing the data to be sent and filled with the reply
 /// - a2: how many bytes to read/write (max 16)
 pub const SYS_INPUT_DEV: usize = 0x07;
+
+/// Send a string to the debug console. The string is assumed to be UTF-8, other formats may be
+/// mangled (but won't crash)
+///
+/// - a0: pointer to the start of the string
+/// - a1: length of the string in bytes (NOT unicode characters)
+pub const SYS_DBG_PUTS: usize = 0x08;

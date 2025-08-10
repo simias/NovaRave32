@@ -6,15 +6,16 @@ extern crate log;
 
 use core::time::Duration;
 
+use nr32_sys::allocator;
 use nr32_sys::gpu::send_to_gpu;
 use nr32_sys::math::{
     Angle, Fp32, matrix,
     matrix::{MAT0, MAT1, MAT2, MAT3, MAT4, MAT5, MAT7},
 };
-use nr32_sys::syscall::{Allocator, ThreadBuilder, input_device, sleep, wait_for_vsync};
+use nr32_sys::syscall::{ThreadBuilder, input_device, sleep, wait_for_vsync};
 
 #[global_allocator]
-static ALLOCATOR: Allocator = Allocator::new();
+static ALLOCATOR: allocator::Allocator = allocator::Allocator::new();
 
 mod panic_handler {
     // use crate::utils::shutdown;
@@ -32,6 +33,9 @@ mod panic_handler {
 
 #[unsafe(no_mangle)]
 pub fn nr32_main() {
+    log::set_logger(&nr32_sys::logger::LOGGER).unwrap();
+    log::set_max_level(log::LevelFilter::Trace);
+
     info!("Task is running!");
 
     start_audio();

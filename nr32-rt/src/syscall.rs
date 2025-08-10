@@ -28,3 +28,10 @@ pub const SYS_FREE: usize = 0x06;
 /// - a1: pointer to the read/write buffer containing the data to be sent and filled with the reply
 /// - a2: how many bytes to read/write (max 16)
 pub const SYS_INPUT_DEV: usize = 0x07;
+
+/// Send a string to the debug console. The string is assumed to be UTF-8, other formats may be
+/// mangled (but won't crash)
+///
+/// - a0: pointer to the start of the string
+/// - a1: length of the string in bytes (NOT unicode characters)
+pub const SYS_DBG_PUTS: usize = 0x08;
