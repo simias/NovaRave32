@@ -322,10 +322,14 @@ fn decode_page(m: &mut NoRa32, lut_idx: usize) -> usize {
                             0b000 => Instruction::Mul { rd, rs1, rs2 },
                             // MULH
                             0b001 => Instruction::Mulh { rd, rs1, rs2 },
+                            // DIV
+                            0b100 => Instruction::Div { rd, rs1, rs2 },
                             // DIVU
                             0b101 => Instruction::Divu { rd, rs1, rs2 },
                             // MULHU
                             0b011 => Instruction::Mulhu { rd, rs1, rs2 },
+                            // REMU
+                            0b111 => Instruction::Remu { rd, rs1, rs2 },
                             _ => unkn,
                         },
                         0b010_0000 => match funct3 {
@@ -727,7 +731,17 @@ pub enum Instruction {
         rs1: Reg,
         rs2: Reg,
     },
+    Div {
+        rd: Reg,
+        rs1: Reg,
+        rs2: Reg,
+    },
     Divu {
+        rd: Reg,
+        rs1: Reg,
+        rs2: Reg,
+    },
+    Remu {
         rd: Reg,
         rs1: Reg,
         rs2: Reg,

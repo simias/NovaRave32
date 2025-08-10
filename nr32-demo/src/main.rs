@@ -38,8 +38,6 @@ pub fn nr32_main() {
 
     start_audio();
 
-    panic!();
-
     // MAT0: Draw matrix
     // MAT1: MVP matrix
     // MAT2: Projection matrix

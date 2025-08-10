@@ -5,8 +5,8 @@ build-wasm:
     cp {{wasm_out}}/novarave32_bg.wasm nr32-web/public/
 
 build-rom $RUSTFLAGS="-C link-arg=-Tmemory.x -C target-feature=+relax":
-    cd nr32-rt && cargo build --release
-    cd nr32-demo && cargo build --release
+    cd nr32-rt && cargo build --release && cargo objdump --release -- -d -x -s -r > ../nr32-web/public/nr32-rt.txt
+    cd nr32-demo && cargo build --release && cargo objdump --release -- -d -x -s -r > ../nr32-web/public/demo.txt
 
 build-cart:
     just build-rom

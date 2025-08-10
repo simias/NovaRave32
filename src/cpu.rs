@@ -429,11 +429,17 @@ pub fn step(m: &mut NoRa32) {
 
             m.cpu.xset(rd, (p >> 32) as u32);
         }
-        Instruction::Divu { rd, rs1, rs2 } => {
-            let a = m.cpu.xget(rs1);
-            let b = m.cpu.xget(rs2);
+        Instruction::Div { rd, rs1, rs2 } => {
+            let a = m.cpu.xget(rs1) as i32;
+            let b = m.cpu.xget(rs2) as i32;
 
-            let d = if b == 0 { !0 } else { a / b };
+            let d = match (a, b) {
+                // Division by 0
+                (_, 0) => !0,
+                // i32::MIN / -1 (signed overflow)
+                (i32::MIN, -1) => i32::MIN,
+                _ => a / b,
+            };
 
             // Having divisions take one cycle feels wrong to me, so I'm using a weird heuristic to
             // penalize them here.
@@ -443,6 +449,32 @@ pub fn step(m: &mut NoRa32) {
             // execution in this CPU model. For instance the PlayStation CPU's division takes
             // dozens of cycles but it can execute in parallel with other instructions as long as
             // there's no register dependency.
+            let hamming_res = d.min(b).unsigned_abs().count_ones();
+
+            m.tick(hamming_res as CycleCounter);
+
+            m.cpu.xset(rd, d as u32);
+        }
+        Instruction::Divu { rd, rs1, rs2 } => {
+            let a = m.cpu.xget(rs1);
+            let b = m.cpu.xget(rs2);
+
+            let d = if b == 0 { !0 } else { a / b };
+
+            // See Div
+            let hamming_res = d.min(b).count_ones();
+
+            m.tick(hamming_res as CycleCounter);
+
+            m.cpu.xset(rd, d);
+        }
+        Instruction::Remu { rd, rs1, rs2 } => {
+            let a = m.cpu.xget(rs1);
+            let b = m.cpu.xget(rs2);
+
+            let d = if b == 0 { a } else { a % b };
+
+            // See Div
             let hamming_res = d.min(b).count_ones();
 
             m.tick(hamming_res as CycleCounter);
@@ -790,6 +822,13 @@ pub fn step(m: &mut NoRa32) {
             m.cpu.pc = pc;
             trigger_trap(m, cause, 0);
         }
+        Instruction::FenceI => {
+            // Instruction fence. A very expensive instruction for us since it clears the decoder,
+            // so penalize it heavily to disincentivize overuse
+            m.tick(10_000);
+            m.cpu.icache.invalidate();
+            m.cpu.decoder.invalidate();
+        }
         Instruction::Unknown32(op) => {
             panic!("Encountered unknown instruction {:x} {:?}", op, m.cpu)
         }
@@ -799,13 +838,6 @@ pub fn step(m: &mut NoRa32) {
         ),
         Instruction::Invalid16(op) => {
             panic!("Encountered invalid instruction {:x} {:?}", op, m.cpu)
-        }
-        Instruction::FenceI => {
-            // Instruction fence. A very expensive instruction for us since it clears the decoder,
-            // so penalize it heavily to disincentivize overuse
-            m.tick(10_000);
-            m.cpu.icache.invalidate();
-            m.cpu.decoder.invalidate();
         }
     }
 }
