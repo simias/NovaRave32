@@ -18,7 +18,7 @@ mod syscall;
 mod utils;
 
 // Linker symbols
-extern "C" {
+unsafe extern "C" {
     static __sstack: u8;
     static __estack: u8;
     static __sheap: u8;
@@ -26,7 +26,7 @@ extern "C" {
 }
 
 /// The system entry must schedule the first task (by setting mepc, mscratch etc...) and return
-#[export_name = "_system_entry"]
+#[unsafe(export_name = "_system_entry")]
 pub fn rust_start() {
     system_init();
 
@@ -43,8 +43,8 @@ pub fn rust_start() {
 }
 
 /// Called for trap handling
-#[export_name = "_system_trap"]
-#[link_section = ".text.fast"]
+#[unsafe(export_name = "_system_trap")]
+#[unsafe(link_section = ".text.fast")]
 pub fn rust_trap() {
     let cause = riscv::register::mcause::read();
 
@@ -64,7 +64,7 @@ pub fn rust_trap() {
     }
 }
 
-#[link_section = ".text.fast"]
+#[unsafe(link_section = ".text.fast")]
 fn handle_irqs() {
     let pending = unsafe { IRQ_PENDING.read() };
 
@@ -89,7 +89,7 @@ fn handle_irqs() {
     }
 }
 
-#[link_section = ".text.fast"]
+#[unsafe(link_section = ".text.fast")]
 fn handle_ecall() {
     // First we have to adjust MEPC to point after the ecall instruction, otherwise it'll be
     // executed again upon return

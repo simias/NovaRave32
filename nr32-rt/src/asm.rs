@@ -216,7 +216,7 @@ _task_runner:
     "
 );
 
-extern "C" {
+unsafe extern "C" {
     pub fn _idle_task();
     pub fn _task_runner() -> !;
 }

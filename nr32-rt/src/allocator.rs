@@ -80,7 +80,7 @@ impl NrHeap {
         }
     }
 
-    #[link_section = ".text.fast"]
+    #[unsafe(link_section = ".text.fast")]
     pub fn raw_alloc(&self, size: usize, align: usize) -> *mut u8 {
         if align > MemBlock::ALIGN {
             error!("Unimplemented alloc align {}", align);
@@ -129,7 +129,7 @@ impl NrHeap {
         return ptr::null_mut();
     }
 
-    #[link_section = ".text.fast"]
+    #[unsafe(link_section = ".text.fast")]
     pub fn raw_free(&self, ptr: *mut u8) {
         if ptr.is_null() {
             return;
