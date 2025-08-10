@@ -111,11 +111,11 @@ impl ThreadBuilder {
     unsafe extern "C" fn trampoline<F>(closure: *mut F)
     where
         F: FnOnce(),
-    {
+    { unsafe {
         let closure: Box<F> = Box::from_raw(closure);
 
         (*closure)()
-    }
+    }}
 }
 
 impl Default for ThreadBuilder {
