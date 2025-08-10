@@ -48,9 +48,7 @@ impl Decoder {
     pub fn invalidate(&mut self) {
         info!("Flushing {} decoded pages", self.pages.len());
         self.pages.clear();
-        for e in self.page_lut.iter_mut() {
-            *e = None;
-        }
+        self.page_lut.fill(None);
         self.last_used_page = (!0, 0);
     }
 }

@@ -142,10 +142,12 @@ fn handle_ecall() {
             let gp = task_reg(3);
 
             sched.spawn_task(scheduler::TaskType::User, entry, data, prio, stack_size, gp);
+            sched.schedule();
             0
         }
         syscall::SYS_EXIT => {
             sched.exit_current_task();
+            // Task is dead, so we don't want to touch its stack anymore
             return;
         }
         syscall::SYS_ALLOC => ALLOCATOR.user_heap().raw_alloc(arg0, arg1) as usize,

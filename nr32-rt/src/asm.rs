@@ -81,7 +81,7 @@ _trap_handler:
     .cfi_startproc
     .cfi_undefined ra
 
-    /* We may preempt so we save everything except ZERO, GP and SP.
+    /* We may preempt so we save everything except ZERO and SP.
      *
      * Later we could special-case some hardware interrupts to be handled faster if we don't
      * preempt them

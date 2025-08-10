@@ -244,7 +244,10 @@ impl Scheduler {
         riscv::register::mscratch::write(task.sp);
         riscv::register::mepc::write(task.ra);
 
-        let mpp_ret = riscv::register::mstatus::MPP::User;
+        let mpp_ret = match task.ty {
+            TaskType::System => riscv::register::mstatus::MPP::Machine,
+            TaskType::User => riscv::register::mstatus::MPP::User,
+        };
 
         unsafe {
             riscv::register::mstatus::set_mpp(mpp_ret);
