@@ -31,7 +31,7 @@ mod panic_handler {
     }
 }
 
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub fn nr32_main() {
     info!("Task is running!");
 
