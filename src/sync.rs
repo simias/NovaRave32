@@ -1,6 +1,6 @@
 //! Keep track of how many cycles have been run for every module
 
-use crate::{gpu, input_dev, spu, systimer, CycleCounter, NoRa32, CPU_FREQ};
+use crate::{CPU_FREQ, CycleCounter, NoRa32, gpu, input_dev, spu, systimer};
 
 /// Tokens used to keep track of the progress of each module individually
 #[derive(Copy, Clone, PartialEq, Eq, Debug)]

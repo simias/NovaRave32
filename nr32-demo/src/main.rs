@@ -8,11 +8,10 @@ use core::time::Duration;
 
 use nr32_sys::gpu::send_to_gpu;
 use nr32_sys::math::{
-    matrix,
+    Angle, Fp32, matrix,
     matrix::{MAT0, MAT1, MAT2, MAT3, MAT4, MAT5, MAT7},
-    Angle, Fp32,
 };
-use nr32_sys::syscall::{input_device, sleep, wait_for_vsync, Allocator, ThreadBuilder};
+use nr32_sys::syscall::{Allocator, ThreadBuilder, input_device, sleep, wait_for_vsync};
 
 #[global_allocator]
 static ALLOCATOR: Allocator = Allocator::new();

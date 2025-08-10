@@ -120,13 +120,13 @@ impl NrHeap {
                         (*b).next = nb;
                     }
 
-                    return pstart as *mut u8;
+                    return pstart;
                 }
             }
         }
 
         error!("Alloc of size {} failed", size);
-        return ptr::null_mut();
+        ptr::null_mut()
     }
 
     #[unsafe(link_section = ".text.fast")]
@@ -222,7 +222,7 @@ impl MemBlock {
     }
 
     fn payload_start(&mut self) -> *mut u8 {
-        unsafe { (self as *mut MemBlock as *mut u8).offset(Self::HEADER_SIZE as isize) }
+        unsafe { (self as *mut MemBlock as *mut u8).add(Self::HEADER_SIZE) }
     }
 }
 

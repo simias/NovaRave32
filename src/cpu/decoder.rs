@@ -65,7 +65,7 @@ fn lut_idx(addr: u32) -> usize {
         return ((off + RAM.len) >> PAGE_LEN_SHIFT) as usize;
     }
 
-    panic!("Invalid PC {:x}", addr);
+    panic!("Invalid PC {addr:x}");
 }
 
 /// Returns the base address of a page from its lut_idx
@@ -136,7 +136,7 @@ fn decode_page(m: &mut NoRa32, lut_idx: usize) -> usize {
         } else if let Some(off) = RAM.contains(base) {
             (&*m.ram as &[u32], off >> 2)
         } else {
-            panic!("Can't decode page at {:x}", base);
+            panic!("Can't decode page at {base:x}");
         }
     };
 

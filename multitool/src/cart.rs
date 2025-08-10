@@ -20,7 +20,7 @@ impl Cart {
     }
 
     pub fn len(&self) -> usize {
-        return self.buf.len()
+        self.buf.len()
     }
 
     pub fn dump<W: Write>(&self, w: &mut W) -> Result<()> {
@@ -47,7 +47,7 @@ impl Cart {
 
                 debug!("Copying bootloader section {}: {:?}", pi, ph);
 
-                self.copy_data(data, ph.p_paddr).with_context(|| format!("Copying data from bootloader section {}", pi))?;
+                self.copy_data(data, ph.p_paddr).with_context(|| format!("Copying data from bootloader section {pi}"))?;
             }
         }
 
@@ -82,7 +82,7 @@ impl Cart {
                         bail!("Section {} file size differs from mem size?", pi);
                     }
 
-                    self.copy_data(data, ph.p_paddr).with_context(|| format!("Copying data from main section {}", pi))?;
+                    self.copy_data(data, ph.p_paddr).with_context(|| format!("Copying data from main section {pi}"))?;
 
                     if ph.p_vaddr != ph.p_paddr {
                         is_range_in_ram(ph.p_vaddr, ph.p_memsz)?;

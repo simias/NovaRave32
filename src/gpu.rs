@@ -1,4 +1,4 @@
-use crate::{irq, sync, CycleCounter, NoRa32, CPU_FREQ};
+use crate::{CPU_FREQ, CycleCounter, NoRa32, irq, sync};
 use glam::Mat4;
 use std::fmt;
 
@@ -279,7 +279,7 @@ fn handle_new_command(m: &mut NoRa32, cmd: u32) -> CommandState {
 
             CommandState::TriangleZ { vindex: 0, gouraud }
         }
-        _ => panic!("Unhandled GPU command {:x}", op),
+        _ => panic!("Unhandled GPU command {op:x}"),
     }
 }
 

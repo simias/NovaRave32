@@ -1,5 +1,5 @@
 //! RISC-V system timer, running at 48kHz
-use crate::{cpu, sync, CycleCounter, NoRa32, CPU_FREQ};
+use crate::{CPU_FREQ, CycleCounter, NoRa32, cpu, sync};
 
 pub struct Timer {
     /// Counter incrementing every MTIME tick. Considered to never overflow.

@@ -1,4 +1,4 @@
-use super::{fifo::Fifo, sync, CycleCounter, NoRa32, CPU_FREQ};
+use super::{CPU_FREQ, CycleCounter, NoRa32, fifo::Fifo, sync};
 
 mod fir;
 
@@ -195,7 +195,7 @@ pub fn store_word(m: &mut NoRa32, addr: u32, val: u32) {
         0x40.. => {
             let voice = (((addr - 0x100) >> 5) & 0x1f) as usize;
             if voice >= 24 {
-                panic!("Unknown voice {}", voice);
+                panic!("Unknown voice {voice}");
             }
 
             let v = &mut m.spu.voices[voice];
@@ -211,10 +211,10 @@ pub fn store_word(m: &mut NoRa32, addr: u32, val: u32) {
                     v.volume_left = (val >> 16) as i16;
                     v.volume_right = val as i16;
                 }
-                n => panic!("Unknown SPU register {}.{}", voice, n),
+                n => panic!("Unknown SPU register {voice}.{n}"),
             }
         }
-        n => panic!("Unknown SPU register {:x}", n),
+        n => panic!("Unknown SPU register {n:x}"),
     }
 }
 

@@ -1,6 +1,6 @@
 //! A very simple interrupt controller
 
-use crate::{cpu, NoRa32};
+use crate::{NoRa32, cpu};
 
 /// All interrupts supported by the system (minus the MTI interrupt that's directly handled by the
 /// CPU

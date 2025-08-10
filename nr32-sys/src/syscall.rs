@@ -40,6 +40,12 @@ pub fn free(ptr: *mut u8) {
 
 pub struct Allocator;
 
+impl Default for Allocator {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl Allocator {
     pub const fn new() -> Allocator {
         Allocator

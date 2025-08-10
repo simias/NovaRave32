@@ -332,7 +332,7 @@ impl AudioBuffer {
                     *index += 1;
                 }
             },
-            |err| eprintln!("Stream error: {}", err),
+            |err| eprintln!("Stream error: {err}"),
             None,
         )?;
 

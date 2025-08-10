@@ -1,4 +1,4 @@
-use super::{fifo::Fifo, irq, sync, CycleCounter, NoRa32, CPU_FREQ};
+use super::{CPU_FREQ, CycleCounter, NoRa32, fifo::Fifo, irq, sync};
 
 mod touchscreen;
 
@@ -116,7 +116,7 @@ pub fn store_word(m: &mut NoRa32, addr: u32, val: u32) {
 
             m.input_dev.tx_fifo.push(b);
         }
-        n => panic!("Unknown input dev register {:x}", n),
+        n => panic!("Unknown input dev register {n:x}"),
     }
 
     run(m);

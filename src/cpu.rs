@@ -2,7 +2,7 @@
 
 mod decoder;
 
-use crate::{sync, CycleCounter, NoRa32, RAM, ROM};
+use crate::{CycleCounter, NoRa32, RAM, ROM, sync};
 use decoder::{Decoder, Instruction};
 use std::fmt;
 
@@ -104,7 +104,7 @@ impl Cpu {
         match (self.mstatus >> 11) & 3 {
             0 => Mode::User,
             3 => Mode::Machine,
-            mpp => panic!("Unexpected MPP value: {}", mpp),
+            mpp => panic!("Unexpected MPP value: {mpp}"),
         }
     }
 
@@ -155,7 +155,7 @@ impl Cpu {
         }
 
         if read_only && (and_mask != !0 || or_mask != 0) {
-            panic!("Attempt to write read-only CSR {:x}", csr);
+            panic!("Attempt to write read-only CSR {csr:x}");
         }
 
         // debug!("CSR SET *{:x} & {:x} | {:x}", csr, and_mask, or_mask);
@@ -206,7 +206,7 @@ impl Cpu {
                 // - the external IRQ are ack'd on the external controller
                 self.mip
             }
-            _ => panic!("Unhandled CSR {:x} {:?}", csr, self),
+            _ => panic!("Unhandled CSR {csr:x} {self:?}"),
         }
     }
 
@@ -350,7 +350,7 @@ pub fn step(m: &mut NoRa32) {
     m.cpu.pc = npc;
 
     match inst {
-        Instruction::InvalidAddress(add) => panic!("Can't fetch instruction at {:x}", add),
+        Instruction::InvalidAddress(add) => panic!("Can't fetch instruction at {add:x}"),
         Instruction::Li { rd, imm } => m.cpu.xset(rd, imm),
         Instruction::Move { rd, rs1 } => {
             let v = m.cpu.xget(rs1);
