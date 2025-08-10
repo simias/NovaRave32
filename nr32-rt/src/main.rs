@@ -188,6 +188,11 @@ fn handle_ecall() {
 
             len
         }
+        syscall::SYS_SHUTDOWN => {
+            let code = arg0 as u16;
+
+            utils::shutdown(code)
+        }
         _ => panic!("Unknown syscall 0x{:02x}", code),
     };
 

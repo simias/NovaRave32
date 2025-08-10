@@ -18,7 +18,6 @@ use nr32_sys::syscall::{ThreadBuilder, input_device, sleep, wait_for_vsync};
 static ALLOCATOR: allocator::Allocator = allocator::Allocator::new();
 
 mod panic_handler {
-    // use crate::utils::shutdown;
     use core::panic::PanicInfo;
 
     #[inline(never)]
@@ -26,8 +25,7 @@ mod panic_handler {
     fn panic(info: &PanicInfo) -> ! {
         error!("!PANIC!");
         error!("{}", info);
-        // shutdown(!0)
-        panic!();
+        nr32_sys::syscall::shutdown(!0)
     }
 }
 
@@ -39,6 +37,8 @@ pub fn nr32_main() {
     info!("Task is running!");
 
     start_audio();
+
+    panic!();
 
     // MAT0: Draw matrix
     // MAT1: MVP matrix
@@ -106,6 +106,8 @@ pub fn nr32_main() {
             } else {
                 angle_x -= angle_dx;
             }
+
+            info!("{} {}", 323.99999, angle_x);
         }
 
         prev_touch = touch;

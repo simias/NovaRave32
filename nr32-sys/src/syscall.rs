@@ -30,6 +30,12 @@ pub fn exit() -> ! {
     unreachable!()
 }
 
+pub fn shutdown(code: u16) -> ! {
+    syscall_1(SYS_SHUTDOWN, code as _);
+
+    unreachable!()
+}
+
 pub fn alloc(layout: Layout) -> *mut u8 {
     syscall_2(SYS_ALLOC, layout.size(), layout.align()) as *mut u8
 }
@@ -221,3 +227,8 @@ pub const SYS_INPUT_DEV: usize = 0x07;
 /// - a0: pointer to the start of the string
 /// - a1: length of the string in bytes (NOT unicode characters)
 pub const SYS_DBG_PUTS: usize = 0x08;
+
+/// Shutdown the emulator
+///
+/// - a0: exit code (truncated to 16bits)
+pub const SYS_SHUTDOWN: usize = 0x09;
