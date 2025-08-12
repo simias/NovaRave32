@@ -19,12 +19,6 @@ _start:
     /* Disable all interrupts */
     csrw    mie, 0
 
-    /* Setup GP */
-    .option push
-    .option norelax
-    la      gp, __global_pointer$
-    .option pop
-
     /* Setup SP to the top of the system stack space */
     la      t0, __estack
     /* 16-byte aligned */
@@ -81,11 +75,7 @@ _trap_handler:
     .cfi_startproc
     .cfi_undefined ra
 
-    /* We may preempt so we save everything except ZERO and SP.
-     *
-     * Later we could special-case some hardware interrupts to be handled faster if we don't
-     * preempt them
-     */
+    /* Allocate stack space to potentially bank all registers */
     add     sp, sp, -(32 * 4)
 
     .option push
@@ -97,37 +87,96 @@ _trap_handler:
     sc.w    zero, zero, (sp)
     .option pop
 
-    sw      x1,  (31 * 4)(sp)
-    /* Skip x2 = SP */
-    sw      x3,  (30 * 4)(sp)
-    sw      x4,  (29 * 4)(sp)
-    sw      x5,  (28 * 4)(sp)
-    sw      x6,  (27 * 4)(sp)
-    sw      x7,  (26 * 4)(sp)
-    sw      x8,  (25 * 4)(sp)
-    sw      x9,  (24 * 4)(sp)
-    sw      x10, (23 * 4)(sp)
-    sw      x11, (22 * 4)(sp)
-    sw      x12, (21 * 4)(sp)
-    sw      x13, (20 * 4)(sp)
-    sw      x14, (19 * 4)(sp)
-    sw      x15, (18 * 4)(sp)
-    sw      x16, (17 * 4)(sp)
-    sw      x17, (16 * 4)(sp)
-    sw      x18, (15 * 4)(sp)
-    sw      x19, (14 * 4)(sp)
-    sw      x20, (13 * 4)(sp)
-    sw      x21, (12 * 4)(sp)
-    sw      x22, (11 * 4)(sp)
-    sw      x23, (10 * 4)(sp)
-    sw      x24, (9 * 4)(sp)
-    sw      x25, (8 * 4)(sp)
-    sw      x26, (7 * 4)(sp)
-    sw      x27, (6 * 4)(sp)
-    sw      x28, (5 * 4)(sp)
-    sw      x29, (4 * 4)(sp)
-    sw      x30, (3 * 4)(sp)
-    sw      x31, (2 * 4)(sp)
+    /* See if this is an ECALL from U-Mode (MCAUSE = 8). If it's the case we don't have to bank
+     * anything since this works like a normal C function call. */
+    sw      s0, (24 * 4)(sp)
+    csrr    s0, mcause
+    addi    s0, s0, -8
+    bnez    s0, .L_not_ecall
+
+    /* Swap system stack in, but save caller SP in case the caller gets preempted */
+    mv      s0, sp
+    csrrw   sp, mscratch, sp
+
+    jal     _system_ecall
+
+    bnez    a1, .L_task_changed
+
+    /* Same task, we can return immediately */
+    csrrw   sp, mscratch, sp
+
+    lw      s0, (24 * 4)(sp)
+    add     sp, sp, (32 * 4)
+    mret
+
+.L_task_changed:
+    addi    a1, a1, -1
+
+    /* Previous task has been killed, we don't have to worry about its registers */
+    bnez    a1, __return_to_user
+
+    /* Previous task has been preempted, save its registers */
+
+    /* Retrieve previous task SP */
+    mv      t0, sp
+    mv      sp, s0
+
+    /* We only have to save callee-preserved registers + a0 (syscall return value) */
+    sw      gp,  (29 * 4)(sp)
+    sw      tp,  (28 * 4)(sp)
+    sw      s1,  (23 * 4)(sp)
+    sw      a0,  (22 * 4)(sp)
+    sw      s2,  (14 * 4)(sp)
+    sw      s3,  (13 * 4)(sp)
+    sw      s4,  (12 * 4)(sp)
+    sw      s5,  (11 * 4)(sp)
+    sw      s6,  (10 * 4)(sp)
+    sw      s7,  (9 * 4)(sp)
+    sw      s8,  (8 * 4)(sp)
+    sw      s9,  (7 * 4)(sp)
+    sw      s10, (6 * 4)(sp)
+    sw      s11, (5 * 4)(sp)
+
+    /* Return to sys stack */
+    mv      sp, t0
+
+    j       __return_to_user
+
+.L_not_ecall:
+
+    /* We may preempt so we save everything except ZERO and SP. */
+
+    sw      ra,  (31 * 4)(sp)
+    /* Skip SP */
+    sw      gp,  (29 * 4)(sp)
+    sw      tp,  (28 * 4)(sp)
+    sw      t0, (27 * 4)(sp)
+    sw      t1,  (26 * 4)(sp)
+    sw      t2,  (25 * 4)(sp)
+    /* S0 banked above */
+    sw      s1,  (23 * 4)(sp)
+    sw      a0,  (22 * 4)(sp)
+    sw      a1,  (21 * 4)(sp)
+    sw      a2,  (20 * 4)(sp)
+    sw      a3,  (19 * 4)(sp)
+    sw      a4,  (18 * 4)(sp)
+    sw      a5,  (17 * 4)(sp)
+    sw      a6,  (16 * 4)(sp)
+    sw      a7,  (15 * 4)(sp)
+    sw      s2,  (14 * 4)(sp)
+    sw      s3,  (13 * 4)(sp)
+    sw      s4,  (12 * 4)(sp)
+    sw      s5,  (11 * 4)(sp)
+    sw      s6,  (10 * 4)(sp)
+    sw      s7,  (9 * 4)(sp)
+    sw      s8,  (8 * 4)(sp)
+    sw      s9,  (7 * 4)(sp)
+    sw      s10, (6 * 4)(sp)
+    sw      s11, (5 * 4)(sp)
+    sw      t3,  (4 * 4)(sp)
+    sw      t4,  (3 * 4)(sp)
+    sw      t5,  (2 * 4)(sp)
+    sw      t6,  (1 * 4)(sp)
 
     /* Swap system stack in */
     csrrw   sp, mscratch, sp
@@ -140,37 +189,37 @@ __return_to_user:
     /* Swap to task stack */
     csrrw   sp, mscratch, sp
 
-    lw      x1, (31 * 4)(sp)
+    lw      ra,  (31 * 4)(sp)
     /* Skip x2 = SP */
-    lw      x3,  (30 * 4)(sp)
-    lw      x4,  (29 * 4)(sp)
-    lw      x5,  (28 * 4)(sp)
-    lw      x6,  (27 * 4)(sp)
-    lw      x7,  (26 * 4)(sp)
-    lw      x8,  (25 * 4)(sp)
-    lw      x9,  (24 * 4)(sp)
-    lw      x10, (23 * 4)(sp)
-    lw      x11, (22 * 4)(sp)
-    lw      x12, (21 * 4)(sp)
-    lw      x13, (20 * 4)(sp)
-    lw      x14, (19 * 4)(sp)
-    lw      x15, (18 * 4)(sp)
-    lw      x16, (17 * 4)(sp)
-    lw      x17, (16 * 4)(sp)
-    lw      x18, (15 * 4)(sp)
-    lw      x19, (14 * 4)(sp)
-    lw      x20, (13 * 4)(sp)
-    lw      x21, (12 * 4)(sp)
-    lw      x22, (11 * 4)(sp)
-    lw      x23, (10 * 4)(sp)
-    lw      x24, (9 * 4)(sp)
-    lw      x25, (8 * 4)(sp)
-    lw      x26, (7 * 4)(sp)
-    lw      x27, (6 * 4)(sp)
-    lw      x28, (5 * 4)(sp)
-    lw      x29, (4 * 4)(sp)
-    lw      x30, (3 * 4)(sp)
-    lw      x31, (2 * 4)(sp)
+    lw      gp,  (29 * 4)(sp)
+    lw      tp,  (28 * 4)(sp)
+    lw      t0,  (27 * 4)(sp)
+    lw      t1,  (26 * 4)(sp)
+    lw      t2,  (25 * 4)(sp)
+    lw      s0,  (24 * 4)(sp)
+    lw      s1,  (23 * 4)(sp)
+    lw      a0,  (22 * 4)(sp)
+    lw      a1,  (21 * 4)(sp)
+    lw      a2,  (20 * 4)(sp)
+    lw      a3,  (19 * 4)(sp)
+    lw      a4,  (18 * 4)(sp)
+    lw      a5,  (17 * 4)(sp)
+    lw      a6,  (16 * 4)(sp)
+    lw      a7,  (15 * 4)(sp)
+    lw      s2,  (14 * 4)(sp)
+    lw      s3,  (13 * 4)(sp)
+    lw      s4,  (12 * 4)(sp)
+    lw      s5,  (11 * 4)(sp)
+    lw      s6,  (10 * 4)(sp)
+    lw      s7,  (9 * 4)(sp)
+    lw      s8,  (8 * 4)(sp)
+    lw      s9,  (7 * 4)(sp)
+    lw      s10, (6 * 4)(sp)
+    lw      s11, (5 * 4)(sp)
+    lw      t3,  (4 * 4)(sp)
+    lw      t4,  (3 * 4)(sp)
+    lw      t5,  (2 * 4)(sp)
+    lw      t6,  (1 * 4)(sp)
 
     add     sp, sp, (32 * 4)
 

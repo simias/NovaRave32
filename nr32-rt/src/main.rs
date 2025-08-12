@@ -16,6 +16,7 @@ mod input_dev;
 mod scheduler;
 mod syscall;
 mod utils;
+mod lock;
 use core::fmt::Write;
 
 // Linker symbols
@@ -28,7 +29,7 @@ unsafe extern "C" {
 
 /// The system entry must schedule the first task (by setting mepc, mscratch etc...) and return
 #[unsafe(export_name = "_system_entry")]
-pub fn rust_start() {
+pub extern "C" fn rust_start() {
     system_init();
 
     {
@@ -43,10 +44,10 @@ pub fn rust_start() {
     }
 }
 
-/// Called for trap handling
+/// Called for trap handling *except* ecall (MCAUSE = 8) that gets forwarded to handle_ecall
 #[unsafe(export_name = "_system_trap")]
 #[unsafe(link_section = ".text.fast")]
-pub fn rust_trap() {
+pub extern "C" fn rust_trap() {
     let cause = riscv::register::mcause::read();
 
     match (cause.is_interrupt(), cause.code()) {
@@ -57,10 +58,6 @@ pub fn rust_trap() {
         }
         // External interrupt
         (true, 11) => handle_irqs(),
-        // ECALL from user mode
-        (false, 8) => handle_ecall(),
-        // ECALL from machine mode
-        (false, 11) => handle_ecall(),
         _ => panic!("Unhandled trap {:x?}", cause),
     }
 }
@@ -90,40 +87,49 @@ fn handle_irqs() {
     }
 }
 
+#[repr(usize)]
+pub enum ECallOutcome {
+    /// ECall was handled and we can directly return control to the caller
+    Return = 0,
+    /// The caller got preempted, we need to save its registers before returning to the newly
+    /// scheduled task
+    Preempted = 1,
+    /// The task that triggered the ECALL was killed, we can ignore its register and directly
+    /// switch to the newly scheduled task
+    DeadTask = 2,
+}
+
+#[repr(C)]
+pub struct ECallRet {
+    ret_val: usize,
+    outcome: ECallOutcome,
+}
+
+/// Handle ECALL from user mode.
+///
+/// This is separate
+#[unsafe(export_name = "_system_ecall")]
 #[unsafe(link_section = ".text.fast")]
-fn handle_ecall() {
+pub extern "C" fn handle_ecall(
+    arg0: usize,
+    arg1: usize,
+    arg2: usize,
+    arg3: usize,
+    arg4: usize,
+    _arg5: usize,
+    _arg6: usize,
+    sys_no: usize,
+) -> ECallRet {
     // First we have to adjust MEPC to point after the ecall instruction, otherwise it'll be
     // executed again upon return
     let pc = riscv::register::mepc::read();
     riscv::register::mepc::write(pc + 4);
 
-    // We need to get the syscall code and arguments from its task since that's where the trap
-    // handler will have banked them
-    let task_sp = riscv::register::mscratch::read();
-
-    let task_reg = |reg: usize| -> usize {
-        let p = task_sp + (33 - reg) * 4;
-
-        unsafe {
-            let p = p as *const usize;
-
-            *p
-        }
-    };
-
-    /* a7 */
-    let code = task_reg(17);
-    /* a0 */
-    let arg0 = task_reg(10);
-    /* a1 */
-    let arg1 = task_reg(11);
-    /* a2 */
-    let arg2 = task_reg(12);
-    /* a3 */
-    let arg3 = task_reg(13);
-
     let mut sched = scheduler::get();
-    let ret = match code {
+
+    let caller_task = sched.cur_task_id();
+
+    let ret_val = match sys_no {
         // Can also be used for yielding with `ticks` set to 0
         syscall::SYS_SLEEP => {
             let ticks = (arg0 as u64) | ((arg1 as u64) << 32);
@@ -133,23 +139,25 @@ fn handle_ecall() {
         }
         syscall::SYS_WAIT_FOR_VSYNC => {
             sched.current_task_set_state(scheduler::TaskState::WaitingForVSync);
-            return;
+            0
         }
         syscall::SYS_SPAWN_TASK => {
             let entry = arg0;
             let data = arg1;
             let prio = arg2 as i32;
             let stack_size = arg3;
-            let gp = task_reg(3);
+            let gp = arg4;
 
             sched.spawn_task(scheduler::TaskType::User, entry, data, prio, stack_size, gp);
-            sched.schedule();
             0
         }
         syscall::SYS_EXIT => {
             sched.exit_current_task();
             // Task is dead, so we don't want to touch its stack anymore
-            return;
+            return ECallRet {
+                ret_val: 0,
+                outcome: ECallOutcome::DeadTask,
+            };
         }
         syscall::SYS_ALLOC => ALLOCATOR.user_heap().raw_alloc(arg0, arg1) as usize,
         syscall::SYS_FREE => {
@@ -166,10 +174,7 @@ fn handle_ecall() {
             let mut input_dev = input_dev::get();
 
             match input_dev.xmit(port, buf) {
-                Ok(_) => {
-                    sched.current_task_set_state(scheduler::TaskState::WaitingForInputDev);
-                    return;
-                }
+                Ok(_) => sched.current_task_set_state(scheduler::TaskState::WaitingForInputDev),
                 Err(_) => !0,
             }
         }
@@ -180,7 +185,7 @@ fn handle_ecall() {
             let buf = unsafe { core::slice::from_raw_parts(ptr, len) };
             let tid = sched.cur_task_id();
 
-            let _ = write!(console::DebugConsole, "#{} ", tid);
+            let _ = write!(console::DebugConsole, "#{tid} ");
             for b in buf {
                 console::DebugConsole::putchar(*b);
             }
@@ -193,15 +198,18 @@ fn handle_ecall() {
 
             utils::shutdown(code)
         }
-        _ => panic!("Unknown syscall 0x{:02x}", code),
+        _ => panic!("Unknown syscall 0x{:02x}", sys_no),
     };
 
-    // Set return value in a0
-    unsafe {
-        let p = task_sp + (23 * 4);
-        let p = p as *mut usize;
-        p.write_volatile(ret);
-    }
+    let outcome = if sched.cur_task_id() == caller_task {
+        // Still running the same task
+        ECallOutcome::Return
+    } else {
+        // We're switching to a different task
+        ECallOutcome::Preempted
+    };
+
+    ECallRet { ret_val, outcome }
 }
 
 fn system_init() {

@@ -1,5 +1,5 @@
 use alloc::boxed::Box;
-use core::alloc::{Layout};
+use core::alloc::Layout;
 use core::arch::asm;
 use core::time::Duration;
 
@@ -108,11 +108,13 @@ impl ThreadBuilder {
     unsafe extern "C" fn trampoline<F>(closure: *mut F)
     where
         F: FnOnce(),
-    { unsafe {
-        let closure: Box<F> = Box::from_raw(closure);
+    {
+        unsafe {
+            let closure: Box<F> = Box::from_raw(closure);
 
-        (*closure)()
-    }}
+            (*closure)()
+        }
+    }
 }
 
 impl Default for ThreadBuilder {
@@ -128,6 +130,7 @@ fn syscall_0(code: usize) -> usize {
         asm!("ecall",
             in("a7") code,
             out("a0") arg0,
+            clobber_abi("C"),
         );
     }
 
@@ -139,6 +142,7 @@ fn syscall_1(code: usize, mut arg0: usize) -> usize {
         asm!("ecall",
             in("a7") code,
             inout("a0") arg0,
+            clobber_abi("C"),
         );
     }
 
@@ -151,6 +155,7 @@ fn syscall_2(code: usize, mut arg0: usize, arg1: usize) -> usize {
             in("a7") code,
             inout("a0") arg0,
             in("a1") arg1,
+            clobber_abi("C"),
         );
     }
 
@@ -164,6 +169,7 @@ fn syscall_3(code: usize, mut arg0: usize, arg1: usize, arg2: usize) -> usize {
             inout("a0") arg0,
             in("a1") arg1,
             in("a2") arg2,
+            clobber_abi("C"),
         );
     }
 
@@ -178,6 +184,7 @@ fn syscall_4(code: usize, mut arg0: usize, arg1: usize, arg2: usize, arg3: usize
             in("a1") arg1,
             in("a2") arg2,
             in("a3") arg3,
+            clobber_abi("C"),
         );
     }
 

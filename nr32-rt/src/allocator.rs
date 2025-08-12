@@ -1,6 +1,6 @@
 use core::alloc::{GlobalAlloc, Layout};
 use core::ptr;
-use spin::{Mutex, MutexGuard};
+use crate::lock::{Mutex, MutexGuard};
 
 pub struct Allocator {
     /// Heap for use by the kernel

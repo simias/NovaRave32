@@ -49,9 +49,6 @@ SECTIONS {
     .data :
     {
         . = ALIGN(4);
-        /* For GP in order to make some address calculations faster */
-        PROVIDE(__global_pointer$ = . + 0x800);
-
         *(.sdata .sdata.* .sdata2 .sdata2.*);
         *(.data .data.*);
     } > RAM AT > ROM

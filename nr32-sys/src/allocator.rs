@@ -35,4 +35,3 @@ unsafe impl GlobalAlloc for Allocator {
         syscall::free(ptr)
     }
 }
-

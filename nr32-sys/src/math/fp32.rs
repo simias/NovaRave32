@@ -48,11 +48,7 @@ impl Fp32 {
     }
 
     pub const fn abs(self) -> Fp32 {
-        if self.0 >= 0 {
-            self
-        } else {
-            self.neg()
-        }
+        if self.0 >= 0 { self } else { self.neg() }
     }
 
     pub const fn neg(self) -> Fp32 {
@@ -67,11 +63,7 @@ impl Fp32 {
     pub const fn with_sign(self, sign: i32) -> Fp32 {
         let abs = self.abs();
 
-        if sign >= 0 {
-            abs
-        } else {
-            abs.neg()
-        }
+        if sign >= 0 { abs } else { abs.neg() }
     }
 
     pub fn checked_mul(self, rhs: Fp32) -> Option<Fp32> {

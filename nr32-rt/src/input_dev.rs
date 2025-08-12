@@ -1,5 +1,5 @@
 /// Input device (touchscreen, pad, ...) handling
-use spin::{Mutex, MutexGuard};
+use crate::lock::{Mutex, MutexGuard};
 
 pub struct InputDev {
     /// If a transfer is ongoing, this is the target buffer for the RX data

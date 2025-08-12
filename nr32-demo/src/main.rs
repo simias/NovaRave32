@@ -30,11 +30,20 @@ mod panic_handler {
 }
 
 #[unsafe(no_mangle)]
-pub fn nr32_main() {
+pub extern "C" fn nr32_main() {
     log::set_logger(&nr32_sys::logger::LOGGER).unwrap();
     log::set_max_level(log::LevelFilter::Trace);
 
     info!("Task is running!");
+
+    ThreadBuilder::new()
+        .stack_size(1024)
+        .priority(-1)
+        .spawn(move || {
+            info!("One shot start");
+            sleep(Duration::from_secs(3));
+            info!("One shot end");
+        });
 
     start_audio();
 

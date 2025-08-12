@@ -24,12 +24,14 @@ format:
     cargo fmt
     cd nr32-demo && cargo fmt
     cd nr32-rt && cargo fmt
+    cd nr32-sys && cargo fmt
     cd nr32-web && npx prettier --write .
 
 lint:
     cargo clippy
     cd nr32-demo && cargo clippy
     cd nr32-rt && cargo clippy
+    cd nr32-sys && cargo clippy
     cd nr32-web && npx eslint
 
 web-dev:

@@ -4,7 +4,7 @@ use crate::{
 };
 use alloc::vec::Vec;
 use core::ptr::NonNull;
-use spin::{Mutex, MutexGuard};
+use crate::lock::{Mutex, MutexGuard};
 
 pub struct Scheduler {
     tasks: Vec<Task>,
@@ -50,21 +50,23 @@ impl Scheduler {
         prio: i32,
         stack_size: usize,
         gp: usize,
-    ) {
+    ) -> usize {
         let (stack, sp) = stack_alloc(ty, stack_size + BANKED_REGISTER_LEN);
 
         // Put function in banked a1 and data in banked a0
+        //
+        // The layout should match the banking scheme in asm.rs
         unsafe {
             let p = sp - BANKED_REGISTER_LEN;
 
             let p = p as *mut usize;
 
             // A0
-            *(p.offset(23)) = data;
+            *(p.offset(22)) = data;
             // A1
-            *(p.offset(22)) = entry;
+            *(p.offset(21)) = entry;
             // GP
-            *(p.offset(30)) = gp;
+            *(p.offset(29)) = gp;
         };
 
         let new_task = Task {
@@ -76,15 +78,17 @@ impl Scheduler {
             stack,
         };
 
-        for t in self.tasks.iter_mut() {
+        for (i, t) in self.tasks.iter_mut().enumerate() {
             if matches!(t.state, TaskState::Dead) {
                 *t = new_task;
-                return;
+                return i;
             }
         }
 
         // No dead task, create a new one
         self.tasks.push(new_task);
+
+        self.tasks.len() - 1
     }
 
     pub fn exit_current_task(&mut self) {
@@ -224,7 +228,6 @@ impl Scheduler {
                 until: now.saturating_add(ticks),
             };
         }
-
         self.schedule();
     }
 

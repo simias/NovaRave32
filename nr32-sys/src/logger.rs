@@ -1,6 +1,6 @@
-use log::{Log, Metadata, Record};
 use crate::syscall;
 use alloc::format;
+use log::{Log, Metadata, Record};
 
 // Implement a global logger
 pub struct SysLogger;
