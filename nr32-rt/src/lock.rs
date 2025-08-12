@@ -4,7 +4,8 @@ use core::ops::{Deref, DerefMut};
 use core::sync::atomic::{compiler_fence, Ordering};
 
 /// Simple Mutex that is really just a flag given that we have a single-core CPU and we run the
-/// kernel with IRQ disabled.
+/// kernel with IRQ disabled. There can never be contention (or if there is, it means that it's a
+/// bug because we'll immediately deadlock).
 pub struct Mutex<T> {
     locked: Cell<bool>,
     value:  UnsafeCell<T>,
