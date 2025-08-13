@@ -743,6 +743,18 @@ pub fn step(m: &mut NoRa32) {
                 panic!("Misaligned load {:x} {:?}", addr, m.cpu);
             }
         }
+        Instruction::AmoaddW { rd, rs1, rs2 } => {
+            let addr = m.cpu.xget(rs1);
+            let inc = m.cpu.xget(rs2);
+
+            if addr & 3 == 0 {
+                let v = m.load_word(addr);
+                m.cpu.xset(rd, v);
+                m.store_word(addr, v.wrapping_add(inc));
+            } else {
+                panic!("Misaligned load {:x} {:?}", addr, m.cpu);
+            }
+        }
         Instruction::CsrSet { rd, csr, rs1 } => {
             let v = m.cpu.xget(rs1);
 

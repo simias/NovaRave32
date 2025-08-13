@@ -6,4 +6,5 @@ pub mod allocator;
 pub mod gpu;
 pub mod logger;
 pub mod math;
+pub mod sync;
 pub mod syscall;

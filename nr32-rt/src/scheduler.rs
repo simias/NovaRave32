@@ -1,10 +1,10 @@
+use crate::lock::{Mutex, MutexGuard};
 use crate::{
     MTIME_HZ,
     asm::{_idle_task, _task_runner},
 };
 use alloc::vec::Vec;
 use core::ptr::NonNull;
-use crate::lock::{Mutex, MutexGuard};
 
 pub struct Scheduler {
     tasks: Vec<Task>,
@@ -167,7 +167,7 @@ impl Scheduler {
                     // above) so we're going to force a preemption in a short while
                     run_until = run_until.min(contention_until);
                 }
-                TaskState::Sleeping { until } => {
+                TaskState::Sleeping { until, .. } => {
                     run_until = if t.prio > next_prio {
                         run_until.min(until)
                     } else {
@@ -193,12 +193,38 @@ impl Scheduler {
         let now = mtime_get();
 
         for t in &mut self.tasks {
-            if let TaskState::Sleeping { until } = t.state {
+            if let TaskState::Sleeping { until, .. } = t.state {
                 if now >= until {
                     t.state = TaskState::Running;
                 }
             }
         }
+    }
+
+    #[unsafe(link_section = ".text.fast")]
+    pub fn futex_wake(&mut self, wake_futex_addr: usize, nwakeup: usize) -> usize {
+        if nwakeup == 0 {
+            return 0;
+        }
+
+        let mut awoken = 0;
+
+        // XXX we may want to wake high priority tasks first. Or alternatively the tasks that have
+        // been sleeping for the longest duration.
+        for t in &mut self.tasks {
+            if let TaskState::Sleeping { futex_addr, .. } = t.state {
+                if futex_addr == wake_futex_addr {
+                    t.state = TaskState::Running;
+                    awoken += 1;
+
+                    if nwakeup == awoken {
+                        return awoken;
+                    }
+                }
+            }
+        }
+
+        awoken
     }
 
     #[unsafe(link_section = ".text.fast")]
@@ -218,13 +244,14 @@ impl Scheduler {
     }
 
     #[unsafe(link_section = ".text.fast")]
-    pub fn sleep_current_task(&mut self, ticks: u64) {
+    pub fn sleep_current_task(&mut self, futex_addr: usize, ticks: u64) {
         if ticks > 0 {
             let t = &mut self.tasks[self.cur_task];
 
             let now = mtime_get();
 
             t.state = TaskState::Sleeping {
+                futex_addr,
                 until: now.saturating_add(ticks),
             };
         }
@@ -295,6 +322,8 @@ pub enum TaskState {
     Sleeping {
         /// MTIME value
         until: u64,
+        /// If this task is waiting on a futex, this is its address.
+        futex_addr: usize,
     },
     WaitingForVSync,
     WaitingForInputDev,

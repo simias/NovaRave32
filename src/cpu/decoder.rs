@@ -198,6 +198,7 @@ fn decode_page(m: &mut NoRa32, lut_idx: usize) -> usize {
                     match funct3 {
                         // FENCE
                         0b000 => Instruction::nop(),
+                        // FENCE.I
                         0b001 => Instruction::FenceI,
                         _ => unkn,
                     }
@@ -289,6 +290,7 @@ fn decode_page(m: &mut NoRa32, lut_idx: usize) -> usize {
                         (0b00010, 0b010, Reg::ZERO) => Instruction::Lrw { rd, rs1 },
                         (0b00011, 0b010, _) => Instruction::Scw { rd, rs1, rs2 },
                         (0b01000, 0b010, _) => Instruction::AmoorW { rd, rs1, rs2 },
+                        (0b00000, 0b010, _) => Instruction::AmoaddW { rd, rs1, rs2 },
                         _ => unkn,
                     }
                 }
@@ -900,6 +902,11 @@ pub enum Instruction {
         rs2: Reg,
     },
     AmoorW {
+        rd: Reg,
+        rs1: Reg,
+        rs2: Reg,
+    },
+    AmoaddW {
         rd: Reg,
         rs1: Reg,
         rs2: Reg,

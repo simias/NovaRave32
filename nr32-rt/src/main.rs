@@ -13,11 +13,13 @@ mod asm;
 mod bootscript;
 mod console;
 mod input_dev;
+mod lock;
 mod scheduler;
 mod syscall;
 mod utils;
-mod lock;
+
 use core::fmt::Write;
+use core::sync::atomic::{AtomicUsize, Ordering::Acquire};
 
 // Linker symbols
 unsafe extern "C" {
@@ -134,7 +136,7 @@ pub extern "C" fn handle_ecall(
         syscall::SYS_SLEEP => {
             let ticks = (arg0 as u64) | ((arg1 as u64) << 32);
 
-            sched.sleep_current_task(ticks);
+            sched.sleep_current_task(!0, ticks);
             0
         }
         syscall::SYS_WAIT_FOR_VSYNC => {
@@ -197,6 +199,35 @@ pub extern "C" fn handle_ecall(
             let code = arg0 as u16;
 
             utils::shutdown(code)
+        }
+        syscall::SYS_FUTEX_WAIT => {
+            let futex_addr = arg0;
+            let expected_val = arg1;
+            let mut ticks = (arg2 as u64) | ((arg3 as u64) << 32);
+
+            if ticks == 0 {
+                // "infinite" delay
+                ticks = !0;
+            }
+
+            let v = unsafe {
+                let p = futex_addr as *const AtomicUsize;
+
+                (*p).load(Acquire)
+            };
+
+            if v == expected_val {
+                sched.sleep_current_task(futex_addr, ticks);
+                0
+            } else {
+                EAGAIN
+            }
+        }
+        syscall::SYS_FUTEX_WAKE => {
+            let futex_addr = arg0;
+            let nwakeup = arg1;
+
+            sched.futex_wake(futex_addr, nwakeup)
         }
         _ => panic!("Unknown syscall 0x{:02x}", sys_no),
     };
@@ -277,3 +308,5 @@ const MTIME_HZ: u32 = 44_100 * 16;
 const IRQ_PENDING: *mut usize = 0xffff_ffe0 as *mut usize;
 /// External Interrupt Controller: IRQ enabled register
 const IRQ_ENABLED: *mut usize = 0xffff_ffe4 as *mut usize;
+
+const EAGAIN: usize = -10isize as usize;

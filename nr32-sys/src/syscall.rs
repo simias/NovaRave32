@@ -13,42 +13,42 @@ pub fn sleep(duration: Duration) {
 
     let ticks = (micros * f + 1_000_000 / 2) / 1_000_000;
 
-    syscall_2(SYS_SLEEP, ticks as usize, (ticks >> 32) as usize);
+    unsafe { syscall_2(SYS_SLEEP, ticks as usize, (ticks >> 32) as usize) };
 }
 
 pub fn wait_for_vsync() {
-    syscall_0(SYS_WAIT_FOR_VSYNC);
+    unsafe { syscall_0(SYS_WAIT_FOR_VSYNC) };
 }
 
 pub fn spawn_task(f: fn(), prio: i32) {
-    syscall_2(SYS_SPAWN_TASK, f as usize, prio as usize);
+    unsafe { syscall_2(SYS_SPAWN_TASK, f as usize, prio as usize) };
 }
 
 pub fn exit() -> ! {
-    syscall_0(SYS_EXIT);
+    unsafe { syscall_0(SYS_EXIT) };
 
     unreachable!()
 }
 
 pub fn shutdown(code: u16) -> ! {
-    syscall_1(SYS_SHUTDOWN, code as _);
+    unsafe { syscall_1(SYS_SHUTDOWN, code as _) };
 
     unreachable!()
 }
 
 pub fn alloc(layout: Layout) -> *mut u8 {
-    syscall_2(SYS_ALLOC, layout.size(), layout.align()) as *mut u8
+    unsafe { syscall_2(SYS_ALLOC, layout.size(), layout.align()) as *mut u8 }
 }
 
 pub fn free(ptr: *mut u8) {
-    syscall_1(SYS_FREE, ptr as usize);
+    unsafe { syscall_1(SYS_FREE, ptr as usize) };
 }
 
 pub fn input_device(port: u8, data_in_out: &mut [u8]) {
     let len = data_in_out.len();
     let ptr = data_in_out.as_mut_ptr();
 
-    syscall_3(SYS_INPUT_DEV, port as usize, ptr as usize, len);
+    unsafe { syscall_3(SYS_INPUT_DEV, port as usize, ptr as usize, len) };
 }
 
 pub fn dbg_puts(s: &str) {
@@ -57,7 +57,7 @@ pub fn dbg_puts(s: &str) {
     let len = s.len();
     let ptr = s.as_ptr();
 
-    syscall_2(SYS_DBG_PUTS, ptr as usize, len);
+    unsafe { syscall_2(SYS_DBG_PUTS, ptr as usize, len) };
 }
 
 #[derive(Copy, Clone)]
@@ -96,13 +96,15 @@ impl ThreadBuilder {
 
         let trampoline = Self::trampoline::<F>;
 
-        syscall_4(
-            SYS_SPAWN_TASK,
-            trampoline as usize,
-            closure as *mut u8 as usize,
-            self.priority as usize,
-            self.stack_size,
-        );
+        unsafe {
+            syscall_4(
+                SYS_SPAWN_TASK,
+                trampoline as usize,
+                closure as *mut u8 as usize,
+                self.priority as usize,
+                self.stack_size,
+            )
+        };
     }
 
     unsafe extern "C" fn trampoline<F>(closure: *mut F)
@@ -123,7 +125,7 @@ impl Default for ThreadBuilder {
     }
 }
 
-fn syscall_0(code: usize) -> usize {
+pub unsafe fn syscall_0(code: usize) -> usize {
     let mut arg0;
 
     unsafe {
@@ -137,7 +139,7 @@ fn syscall_0(code: usize) -> usize {
     arg0
 }
 
-fn syscall_1(code: usize, mut arg0: usize) -> usize {
+pub unsafe fn syscall_1(code: usize, mut arg0: usize) -> usize {
     unsafe {
         asm!("ecall",
             in("a7") code,
@@ -149,7 +151,7 @@ fn syscall_1(code: usize, mut arg0: usize) -> usize {
     arg0
 }
 
-fn syscall_2(code: usize, mut arg0: usize, arg1: usize) -> usize {
+pub unsafe fn syscall_2(code: usize, mut arg0: usize, arg1: usize) -> usize {
     unsafe {
         asm!("ecall",
             in("a7") code,
@@ -162,7 +164,7 @@ fn syscall_2(code: usize, mut arg0: usize, arg1: usize) -> usize {
     arg0
 }
 
-fn syscall_3(code: usize, mut arg0: usize, arg1: usize, arg2: usize) -> usize {
+pub unsafe fn syscall_3(code: usize, mut arg0: usize, arg1: usize, arg2: usize) -> usize {
     unsafe {
         asm!("ecall",
             in("a7") code,
@@ -176,7 +178,13 @@ fn syscall_3(code: usize, mut arg0: usize, arg1: usize, arg2: usize) -> usize {
     arg0
 }
 
-fn syscall_4(code: usize, mut arg0: usize, arg1: usize, arg2: usize, arg3: usize) -> usize {
+pub unsafe fn syscall_4(
+    code: usize,
+    mut arg0: usize,
+    arg1: usize,
+    arg2: usize,
+    arg3: usize,
+) -> usize {
     unsafe {
         asm!("ecall",
             in("a7") code,
@@ -239,3 +247,20 @@ pub const SYS_DBG_PUTS: usize = 0x08;
 ///
 /// - a0: exit code (truncated to 16bits)
 pub const SYS_SHUTDOWN: usize = 0x09;
+
+/// Futex wait
+///
+/// - a0: address of an AtomicIsize
+/// - a1: expected value of the AtomicIsize in a0 (if the values differ, the function returns).
+/// - [a2:a3]: wait timeout in MTIME ticks (0 for infinite)
+///
+/// If the values differ, the call returns immediately with EAGAIN
+///
+/// The function can return spuriously for any reason
+pub const SYS_FUTEX_WAIT: usize = 0x0a;
+
+/// Futex wake
+///
+/// - a0: address of an AtomicIsize
+/// - a1: number of waiting threads to wake up
+pub const SYS_FUTEX_WAKE: usize = 0x0b;

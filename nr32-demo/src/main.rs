@@ -3,9 +3,11 @@
 
 #[macro_use]
 extern crate log;
+extern crate alloc;
 
 use core::time::Duration;
 
+use alloc::sync::Arc;
 use nr32_sys::allocator;
 use nr32_sys::gpu::send_to_gpu;
 use nr32_sys::math::{
@@ -36,6 +38,10 @@ pub extern "C" fn nr32_main() {
 
     info!("Task is running!");
 
+    let sem = Arc::pin(nr32_sys::sync::Semaphore::new(0));
+
+    let sem2 = sem.clone();
+
     ThreadBuilder::new()
         .stack_size(1024)
         .priority(-1)
@@ -43,9 +49,14 @@ pub extern "C" fn nr32_main() {
             info!("One shot start");
             sleep(Duration::from_secs(3));
             info!("One shot end");
+            sem2.as_ref().post();
         });
 
+    sem.as_ref().wait();
+
     start_audio();
+
+    info!("Audio started");
 
     // MAT0: Draw matrix
     // MAT1: MVP matrix

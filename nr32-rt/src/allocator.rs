@@ -1,6 +1,6 @@
+use crate::lock::{Mutex, MutexGuard};
 use core::alloc::{GlobalAlloc, Layout};
 use core::ptr;
-use crate::lock::{Mutex, MutexGuard};
 
 pub struct Allocator {
     /// Heap for use by the kernel
@@ -117,7 +117,8 @@ impl NrHeap {
                         (*nb).flags = 0;
                         (*nb).next = (*b).next;
                         (*nb).prev = b;
-                        (*b).next = nb;
+
+                        (*nb).relink();
                     }
 
                     return pstart;
@@ -154,10 +155,7 @@ impl NrHeap {
                 (*b).size += (*nb).size + MemBlock::HEADER_SIZE;
                 (*b).next = (*nb).next;
 
-                let nb = (*nb).next;
-                if !nb.is_null() {
-                    (*nb).prev = b;
-                }
+                (*b).relink();
             }
 
             let pb = (*b).prev;
@@ -167,10 +165,7 @@ impl NrHeap {
                 (*pb).size += (*b).size + MemBlock::HEADER_SIZE;
                 (*pb).next = (*b).next;
 
-                let nb = (*b).next;
-                if !nb.is_null() {
-                    (*nb).prev = pb;
-                }
+                (*pb).relink();
             }
         }
     }
@@ -223,6 +218,21 @@ impl MemBlock {
 
     fn payload_start(&mut self) -> *mut u8 {
         unsafe { (self as *mut MemBlock as *mut u8).add(Self::HEADER_SIZE) }
+    }
+
+    /// Make sure that prev->next and next->prev are self
+    fn relink(&mut self) {
+        unsafe {
+            let nb = self.next;
+            let pb = self.prev;
+
+            if !nb.is_null() {
+                (*nb).prev = self as *mut _;
+            }
+            if !pb.is_null() {
+                (*pb).next = self as *mut _;
+            }
+        }
     }
 }
 
