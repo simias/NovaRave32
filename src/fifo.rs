@@ -27,7 +27,10 @@ where
 
 impl<const N: usize, T> Fifo<N, T> {
     pub fn is_full(&self) -> bool {
-        self.write_idx == self.read_idx ^ (N as u32)
+        let mask = ((N << 1) - 1) as u32;
+        let xor = N as u32;
+
+        self.write_idx & mask == (self.read_idx & mask) ^ xor
     }
 
     pub fn is_empty(&self) -> bool {
@@ -35,7 +38,8 @@ impl<const N: usize, T> Fifo<N, T> {
     }
 
     pub fn len(&self) -> usize {
-        (self.write_idx.wrapping_sub(self.read_idx) as usize) & (N - 1)
+        let mask = ((N << 1) - 1) as u32;
+        (self.write_idx.wrapping_sub(self.read_idx) & mask) as usize
     }
 
     pub fn push(&mut self, v: T) {

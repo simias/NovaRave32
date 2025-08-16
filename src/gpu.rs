@@ -1,8 +1,10 @@
-use crate::{CPU_FREQ, CycleCounter, NoRa32, irq, sync};
+use crate::{CPU_FREQ, CycleCounter, NoRa32, fifo::Fifo, irq, sync};
 use glam::Mat4;
 use std::fmt;
 
 pub struct Gpu {
+    /// Command buffer
+    command_fifo: Fifo<32, u32>,
     /// State of the command decoding pipeline
     command_state: CommandState,
     /// State of the rasterizer
@@ -33,11 +35,14 @@ pub struct Gpu {
     attribs_u8: Vec<u8>,
     /// Counter that decrements and generates a frame when it reaches 0
     frame_cycles: CycleCounter,
+    /// If this is >0 it means that a command is being processed
+    command_remaining: CycleCounter,
 }
 
 impl Gpu {
     pub fn new() -> Gpu {
         Gpu {
+            command_fifo: Fifo::new(),
             command_state: CommandState::Idle,
             raster_state: RasterState::Idle,
             mat: [Mat4::IDENTITY; 8],
@@ -48,12 +53,19 @@ impl Gpu {
             matrices_f32: Vec::new(),
             matrix_lut: [None; 8],
             frame_cycles: FRAME_CYCLES_30FPS,
+            command_remaining: 0,
         }
     }
 
     fn status(&self) -> u32 {
+        let mut st = 0;
         // bit 0: Command FIFO full
-        0
+        st |= self.command_fifo.is_full() as u32;
+
+        // bits [31:24]: number of words in command FIFO
+        st |= (self.command_fifo.len() << 24) as u32;
+
+        st
     }
 
     fn set_matrix_component(&mut self, mindex: u8, i: u8, j: u8, v: Fp32) {
@@ -133,6 +145,8 @@ fn draw_flat_triangle(m: &mut NoRa32) {
         // Flush to OpenGL
         do_draw(m);
     }
+
+    m.gpu.command_remaining += CPU_FREQ / 200_000;
 }
 
 fn handle_command(m: &mut NoRa32, cmd: u32) {
@@ -212,11 +226,11 @@ fn handle_new_command(m: &mut NoRa32, cmd: u32) -> CommandState {
         }
         // Draw end
         0x02 => {
-            do_draw(m);
-            m.callbacks.display_framebuffer();
             if m.gpu.raster_state == RasterState::Drawing {
                 do_draw(m);
+                m.callbacks.display_framebuffer();
                 m.gpu.raster_state = RasterState::Idle;
+                m.gpu.command_remaining += CPU_FREQ / 1_000;
             }
             CommandState::Idle
         }
@@ -254,6 +268,8 @@ fn handle_new_command(m: &mut NoRa32, cmd: u32) -> CommandState {
 
                     // Invalidate the LUT entry
                     m.gpu.matrix_lut[mindex] = None;
+
+                    m.gpu.command_remaining += CPU_FREQ / 100_000;
 
                     CommandState::Idle
                 }
@@ -297,7 +313,7 @@ pub fn store_word(m: &mut NoRa32, addr: u32, v: u32) {
     run(m);
 
     if addr == 0 {
-        handle_command(m, v);
+        m.gpu.command_fifo.push(v);
     } else {
         warn!("Unhandled GPU write at {:x}", addr);
     }
@@ -307,6 +323,18 @@ pub fn run(m: &mut NoRa32) {
     let elapsed = sync::resync(m, GPUSYNC);
 
     m.gpu.frame_cycles -= elapsed;
+    m.gpu.command_remaining -= elapsed;
+
+    while m.gpu.command_remaining <= 0
+        && let Some(cmd) = m.gpu.command_fifo.pop()
+    {
+        handle_command(m, cmd);
+    }
+
+    // We're stalling on input
+    if m.gpu.command_remaining <= 0 {
+        m.gpu.command_remaining = 0;
+    }
 
     if m.gpu.frame_cycles <= 0 {
         m.frame_counter = m.frame_counter.wrapping_add(1);
