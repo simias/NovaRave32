@@ -10,11 +10,17 @@ pub struct Scheduler {
     tasks: Vec<Task>,
     /// Which task of `tasks` is currently running
     cur_task: usize,
+    /// MTIME of the last task change
+    last_task_change: u64,
+    /// MTIME of last stat dump
+    last_stat_dump: u64,
 }
 
 static SCHEDULER: Mutex<Scheduler> = Mutex::new(Scheduler {
     tasks: Vec::new(),
     cur_task: 0,
+    last_task_change: 0,
+    last_stat_dump: 0,
 });
 
 #[unsafe(link_section = ".text.fast")]
@@ -76,10 +82,11 @@ impl Scheduler {
             prio,
             ty,
             stack,
+            run_ticks: 0,
         };
 
         for (i, t) in self.tasks.iter_mut().enumerate() {
-            if matches!(t.state, TaskState::Dead) {
+            if t.is_dead() {
                 *t = new_task;
                 return i;
             }
@@ -184,6 +191,12 @@ impl Scheduler {
         schedule_preempt(run_until);
 
         if next_task != self.cur_task {
+            let t = &mut self.tasks[self.cur_task];
+            if !t.is_dead() {
+                t.run_ticks += now - self.last_task_change;
+            }
+            self.last_task_change = now;
+
             self.switch_to_task(next_task);
         }
     }
@@ -241,6 +254,37 @@ impl Scheduler {
         if task_awoken {
             self.schedule();
         }
+
+        if state == TaskState::WaitingForVSync {
+            self.dump_task_stats();
+        }
+    }
+
+    pub fn dump_task_stats(&mut self) {
+        // For more accuracy (and simplicity) we use data from the last task change since that's
+        // when the counters were last updated. That means that this code won't work if a single
+        // task hogs 100% of the CPU without ever yielding or being preempted.
+        let lts = self.last_task_change;
+
+        let span = lts - self.last_stat_dump;
+
+        if span < u64::from(MTIME_HZ * 5) {
+            return;
+        }
+
+        let mut tot = 0;
+
+        for (i, t) in self.tasks.iter_mut().enumerate() {
+            let pcent = (t.run_ticks * 100 + span / 2) / span;
+            info!("Task #{i} CPU: {pcent}%");
+            tot += t.run_ticks;
+            t.run_ticks = 0;
+        }
+
+        let pcent = ((span - tot) * 100 + span / 2) / span;
+        info!("System CPU: {pcent}%");
+
+        self.last_stat_dump = lts;
     }
 
     #[unsafe(link_section = ".text.fast")]
@@ -304,6 +348,8 @@ struct Task {
     ty: TaskType,
     /// Pointer to the stack buffer
     stack: NonNull<u8>,
+    /// Total number of MTIME ticks this time has been running since the last stat dump
+    run_ticks: u64,
 }
 
 unsafe impl Send for Task {}
@@ -312,6 +358,11 @@ impl Task {
     #[unsafe(link_section = ".text.fast")]
     fn runnable(&self) -> bool {
         matches!(self.state, TaskState::Running)
+    }
+
+    #[unsafe(link_section = ".text.fast")]
+    fn is_dead(&self) -> bool {
+        matches!(self.state, TaskState::Dead)
     }
 }
 

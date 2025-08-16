@@ -15,7 +15,7 @@ use nr32_sys::math::{
     Angle, Fp32, matrix,
     matrix::{MAT0, MAT1, MAT2, MAT3, MAT4, MAT5, MAT7},
 };
-use nr32_sys::sync::Fifo;
+use nr32_sys::sync::{Fifo, Semaphore};
 use nr32_sys::syscall::{ThreadBuilder, input_device, sleep, wait_for_vsync};
 
 #[global_allocator]
@@ -33,6 +33,11 @@ mod panic_handler {
     }
 }
 
+struct DmaOp {
+    v: usize,
+    dma_done: Option<Pin<Arc<Semaphore>>>,
+}
+
 #[unsafe(no_mangle)]
 pub extern "C" fn nr32_main() {
     log::set_logger(&nr32_sys::logger::LOGGER).unwrap();
@@ -40,7 +45,7 @@ pub extern "C" fn nr32_main() {
 
     info!("Task is running!");
 
-    let fifo: Pin<Arc<Fifo<usize, 8>>> = Arc::pin(Fifo::new());
+    let fifo: Pin<Arc<Fifo<DmaOp, 8>>> = Arc::pin(Fifo::new());
 
     let fifo_c = fifo.clone();
 
@@ -48,12 +53,12 @@ pub extern "C" fn nr32_main() {
         .stack_size(1024)
         .priority(-1)
         .spawn(move || {
-            info!("One shot start");
+            info!("DMA task start");
             loop {
-                sleep(Duration::from_secs(1));
                 let c = fifo_c.as_ref().pop();
-
-                info!("Got {}", c);
+                if let Some(s) = c.dma_done {
+                    s.as_ref().post();
+                }
             }
         });
 
@@ -99,12 +104,17 @@ pub extern "C" fn nr32_main() {
 
     let mut prev_touch: Option<(u16, u16)> = None;
 
+    let s = Arc::pin(Semaphore::new(0));
+
     let mut c = 1000;
     loop {
-        info!("Pushing {}", c);
-        fifo.as_ref().push(c);
-
+        let _ = fifo.as_ref().try_push(DmaOp {
+            v: c,
+            dma_done: Some(s.clone()),
+        });
         c += 1;
+
+        s.as_ref().wait();
 
         let touch = read_touch_screen();
 
@@ -133,8 +143,6 @@ pub extern "C" fn nr32_main() {
             } else {
                 angle_x -= angle_dx;
             }
-
-            info!("{} {}", 323.99999, angle_x);
         }
 
         prev_touch = touch;
