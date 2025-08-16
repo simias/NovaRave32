@@ -90,9 +90,9 @@ fn handle_irqs() {
 }
 
 #[repr(usize)]
-pub enum ECallOutcome {
+pub enum CallerState {
     /// ECall was handled and we can directly return control to the caller
-    Return = 0,
+    NoChange = 0,
     /// The caller got preempted, we need to save its registers before returning to the newly
     /// scheduled task
     Preempted = 1,
@@ -101,10 +101,35 @@ pub enum ECallOutcome {
     DeadTask = 2,
 }
 
+/// handle_ecall's return value. The layout is what's expected from the ASM trampoline.
+///
+/// I pack cstate and result in the same value because the RISC-V calling convention will not allow
+/// for more than 2 return values in registers, if I try to return 3 words it'll switch to the
+/// stack which is annoying.
 #[repr(C)]
 pub struct ECallRet {
-    ret_val: usize,
-    outcome: ECallOutcome,
+    /// - The low 16 bits are 0 if the call was successful, otherwise a SysError value
+    /// - The top 16 bits are the CallerState value
+    cstate_result: usize,
+    value: usize,
+}
+
+impl ECallRet {
+    fn from_result_cstate(result: SysResult<usize>, cstate: CallerState) -> ECallRet {
+        let cstate = cstate as usize;
+
+        let (result, value) = match result {
+            Ok(v) => (0, v),
+            Err(e) => (e as usize, 0),
+        };
+
+        let cstate_result = (cstate << 16) | result;
+
+        ECallRet {
+            cstate_result,
+            value,
+        }
+    }
 }
 
 /// Handle ECALL from user mode.
@@ -131,17 +156,17 @@ pub extern "C" fn handle_ecall(
 
     let caller_task = sched.cur_task_id();
 
-    let ret_val = match sys_no {
+    let result: SysResult<usize> = match sys_no {
         // Can also be used for yielding with `ticks` set to 0
         syscall::SYS_SLEEP => {
             let ticks = (arg0 as u64) | ((arg1 as u64) << 32);
 
             sched.sleep_current_task(!0, ticks);
-            0
+            Ok(0)
         }
         syscall::SYS_WAIT_FOR_VSYNC => {
             sched.current_task_set_state(scheduler::TaskState::WaitingForVSync);
-            0
+            Ok(0)
         }
         syscall::SYS_SPAWN_TASK => {
             let entry = arg0;
@@ -150,22 +175,18 @@ pub extern "C" fn handle_ecall(
             let stack_size = arg3;
             let gp = arg4;
 
-            sched.spawn_task(scheduler::TaskType::User, entry, data, prio, stack_size, gp);
-            0
+            sched.spawn_task(scheduler::TaskType::User, entry, data, prio, stack_size, gp)
         }
         syscall::SYS_EXIT => {
             sched.exit_current_task();
             // Task is dead, so we don't want to touch its stack anymore
-            return ECallRet {
-                ret_val: 0,
-                outcome: ECallOutcome::DeadTask,
-            };
+            return ECallRet::from_result_cstate(Ok(0), CallerState::DeadTask);
         }
-        syscall::SYS_ALLOC => ALLOCATOR.user_heap().raw_alloc(arg0, arg1) as usize,
-        syscall::SYS_FREE => {
-            ALLOCATOR.user_heap().raw_free(arg0 as *mut u8);
-            0
-        }
+        syscall::SYS_ALLOC => ALLOCATOR
+            .user_heap()
+            .try_alloc(arg0, arg1)
+            .map(|p| p.addr().get()),
+        syscall::SYS_FREE => ALLOCATOR.user_heap().raw_free(arg0 as *mut u8).map(|_| 0),
         syscall::SYS_INPUT_DEV => {
             let port = arg0 as u8;
             let ptr = arg1 as *mut u8;
@@ -175,10 +196,10 @@ pub extern "C" fn handle_ecall(
 
             let mut input_dev = input_dev::get();
 
-            match input_dev.xmit(port, buf) {
-                Ok(_) => sched.current_task_set_state(scheduler::TaskState::WaitingForInputDev),
-                Err(_) => !0,
-            }
+            input_dev.xmit(port, buf).map(|_| {
+                sched.current_task_set_state(scheduler::TaskState::WaitingForInputDev);
+                0
+            })
         }
         syscall::SYS_DBG_PUTS => {
             let ptr = arg0 as *const u8;
@@ -193,7 +214,7 @@ pub extern "C" fn handle_ecall(
             }
             console::DebugConsole::putchar(b'\n');
 
-            len
+            Ok(len)
         }
         syscall::SYS_SHUTDOWN => {
             let code = arg0 as u16;
@@ -218,9 +239,9 @@ pub extern "C" fn handle_ecall(
 
             if v == expected_val {
                 sched.sleep_current_task(futex_addr, ticks);
-                0
+                Ok(0)
             } else {
-                EAGAIN
+                Err(SysError::Again)
             }
         }
         syscall::SYS_FUTEX_WAKE => {
@@ -229,18 +250,18 @@ pub extern "C" fn handle_ecall(
 
             sched.futex_wake(futex_addr, nwakeup)
         }
-        _ => panic!("Unknown syscall 0x{:02x}", sys_no),
+        _ => Err(SysError::NoSys),
     };
 
-    let outcome = if sched.cur_task_id() == caller_task {
+    let caller_state = if sched.cur_task_id() == caller_task {
         // Still running the same task
-        ECallOutcome::Return
+        CallerState::NoChange
     } else {
         // We're switching to a different task
-        ECallOutcome::Preempted
+        CallerState::Preempted
     };
 
-    ECallRet { ret_val, outcome }
+    ECallRet::from_result_cstate(result, caller_state)
 }
 
 fn system_init() {
@@ -301,6 +322,24 @@ mod panic_handler {
     }
 }
 
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+enum SysError {
+    /// Device or resource is busy
+    Busy = 1,
+    /// Resource temporarily unavailable
+    Again = 2,
+    /// Cannot allocate memory
+    NoMem = 3,
+    /// Invalid argument
+    Invalid = 4,
+    /// Message is too long
+    TooLong = 5,
+    /// Function not implemented
+    NoSys = 6,
+}
+
+type SysResult<T> = Result<T, SysError>;
+
 /// Frequency of the MTIME timer tick
 const MTIME_HZ: u32 = 44_100 * 16;
 
@@ -308,5 +347,3 @@ const MTIME_HZ: u32 = 44_100 * 16;
 const IRQ_PENDING: *mut usize = 0xffff_ffe0 as *mut usize;
 /// External Interrupt Controller: IRQ enabled register
 const IRQ_ENABLED: *mut usize = 0xffff_ffe4 as *mut usize;
-
-const EAGAIN: usize = -10isize as usize;

@@ -34,7 +34,7 @@ mod panic_handler {
 }
 
 struct DmaOp {
-    v: usize,
+    _v: usize,
     dma_done: Option<Pin<Arc<Semaphore>>>,
 }
 
@@ -60,7 +60,8 @@ pub extern "C" fn nr32_main() {
                     s.as_ref().post();
                 }
             }
-        });
+        })
+        .unwrap();
 
     start_audio();
 
@@ -109,7 +110,7 @@ pub extern "C" fn nr32_main() {
     let mut c = 1000;
     loop {
         let _ = fifo.as_ref().try_push(DmaOp {
-            v: c,
+            _v: c,
             dma_done: Some(s.clone()),
         });
         c += 1;
@@ -185,7 +186,7 @@ fn read_touch_screen() -> Option<(u16, u16)> {
         0,    // y low
         0,
     ];
-    input_device(0, cmd);
+    input_device(0, cmd).unwrap();
 
     if cmd[1] != b'a' {
         // Device didn't respond
@@ -242,7 +243,8 @@ fn start_audio() {
                 }
                 sleep(Duration::from_millis(500));
             }
-        });
+        })
+        .unwrap();
 
     ThreadBuilder::new()
         .stack_size(1024)
@@ -264,7 +266,8 @@ fn start_audio() {
                 }
                 sleep(Duration::from_millis(490));
             }
-        });
+        })
+        .unwrap();
 }
 
 fn send_model(model: &[u8]) {

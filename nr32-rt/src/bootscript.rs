@@ -69,7 +69,9 @@ fn run_op(code: [u8; 4], params: [u32; 3]) {
 
             let mut sched = scheduler::get();
 
-            sched.spawn_task(scheduler::TaskType::User, entry, 0, 0, stack_size, gp);
+            sched
+                .spawn_task(scheduler::TaskType::User, entry, 0, 0, stack_size, gp)
+                .unwrap();
         }
         _ => {
             let desc = String::from_utf8_lossy(&code);

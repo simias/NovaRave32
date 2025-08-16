@@ -1,6 +1,7 @@
 use alloc::boxed::Box;
 use core::alloc::Layout;
 use core::arch::asm;
+use core::ptr::NonNull;
 use core::time::Duration;
 
 /// Frequency of the MTIME timer tick
@@ -13,42 +14,43 @@ pub fn sleep(duration: Duration) {
 
     let ticks = (micros * f + 1_000_000 / 2) / 1_000_000;
 
-    unsafe { syscall_2(SYS_SLEEP, ticks as usize, (ticks >> 32) as usize) };
+    unsafe { syscall_2(SYS_SLEEP, ticks as usize, (ticks >> 32) as usize) }.unwrap();
 }
 
 pub fn wait_for_vsync() {
-    unsafe { syscall_0(SYS_WAIT_FOR_VSYNC) };
+    unsafe { syscall_0(SYS_WAIT_FOR_VSYNC).unwrap() };
 }
 
-pub fn spawn_task(f: fn(), prio: i32) {
-    unsafe { syscall_2(SYS_SPAWN_TASK, f as usize, prio as usize) };
+pub fn spawn_task(f: fn(), prio: i32) -> SysResult<usize> {
+    unsafe { syscall_2(SYS_SPAWN_TASK, f as usize, prio as usize) }
 }
 
 pub fn exit() -> ! {
-    unsafe { syscall_0(SYS_EXIT) };
+    unsafe { syscall_0(SYS_EXIT).unwrap() };
 
     unreachable!()
 }
 
 pub fn shutdown(code: u16) -> ! {
-    unsafe { syscall_1(SYS_SHUTDOWN, code as _) };
+    unsafe { syscall_1(SYS_SHUTDOWN, code as _).unwrap() };
 
     unreachable!()
 }
 
-pub fn alloc(layout: Layout) -> *mut u8 {
-    unsafe { syscall_2(SYS_ALLOC, layout.size(), layout.align()) as *mut u8 }
+pub fn alloc(layout: Layout) -> SysResult<NonNull<u8>> {
+    unsafe { syscall_2(SYS_ALLOC, layout.size(), layout.align()) }
+        .and_then(|p| NonNull::new(p as *mut _).ok_or(SysError::NoMem))
 }
 
-pub fn free(ptr: *mut u8) {
-    unsafe { syscall_1(SYS_FREE, ptr as usize) };
+pub fn free(ptr: *mut u8) -> SysResult<()> {
+    unsafe { syscall_1(SYS_FREE, ptr as usize) }.map(|_| ())
 }
 
-pub fn input_device(port: u8, data_in_out: &mut [u8]) {
+pub fn input_device(port: u8, data_in_out: &mut [u8]) -> SysResult<()> {
     let len = data_in_out.len();
     let ptr = data_in_out.as_mut_ptr();
 
-    unsafe { syscall_3(SYS_INPUT_DEV, port as usize, ptr as usize, len) };
+    unsafe { syscall_3(SYS_INPUT_DEV, port as usize, ptr as usize, len) }.map(|_| ())
 }
 
 pub fn dbg_puts(s: &str) {
@@ -57,7 +59,7 @@ pub fn dbg_puts(s: &str) {
     let len = s.len();
     let ptr = s.as_ptr();
 
-    unsafe { syscall_2(SYS_DBG_PUTS, ptr as usize, len) };
+    unsafe { syscall_2(SYS_DBG_PUTS, ptr as usize, len).unwrap() };
 }
 
 #[derive(Copy, Clone)]
@@ -86,7 +88,7 @@ impl ThreadBuilder {
         self
     }
 
-    pub fn spawn<F>(self, f: F)
+    pub fn spawn<F>(self, f: F) -> SysResult<usize>
     where
         F: FnOnce() + Send + 'static,
     {
@@ -104,7 +106,7 @@ impl ThreadBuilder {
                 self.priority as usize,
                 self.stack_size,
             )
-        };
+        }
     }
 
     unsafe extern "C" fn trampoline<F>(closure: *mut F)
@@ -125,78 +127,126 @@ impl Default for ThreadBuilder {
     }
 }
 
-pub unsafe fn syscall_0(code: usize) -> usize {
+pub unsafe fn syscall_0(code: usize) -> SysResult<usize> {
     let mut arg0;
+    let mut arg1;
 
     unsafe {
         asm!("ecall",
             in("a7") code,
             out("a0") arg0,
+            out("a1") arg1,
             clobber_abi("C"),
         );
     }
 
-    arg0
+    check_syscall_return(arg0, arg1)
 }
 
-pub unsafe fn syscall_1(code: usize, mut arg0: usize) -> usize {
+pub unsafe fn syscall_1(code: usize, mut arg0: usize) -> SysResult<usize> {
+    let mut arg1;
+
     unsafe {
         asm!("ecall",
             in("a7") code,
             inout("a0") arg0,
+            out("a1") arg1,
             clobber_abi("C"),
         );
     }
 
-    arg0
+    check_syscall_return(arg0, arg1)
 }
 
-pub unsafe fn syscall_2(code: usize, mut arg0: usize, arg1: usize) -> usize {
+pub unsafe fn syscall_2(code: usize, mut arg0: usize, mut arg1: usize) -> SysResult<usize> {
     unsafe {
         asm!("ecall",
             in("a7") code,
             inout("a0") arg0,
-            in("a1") arg1,
+            inout("a1") arg1,
             clobber_abi("C"),
         );
     }
 
-    arg0
+    check_syscall_return(arg0, arg1)
 }
 
-pub unsafe fn syscall_3(code: usize, mut arg0: usize, arg1: usize, arg2: usize) -> usize {
+pub unsafe fn syscall_3(
+    code: usize,
+    mut arg0: usize,
+    mut arg1: usize,
+    arg2: usize,
+) -> SysResult<usize> {
     unsafe {
         asm!("ecall",
             in("a7") code,
             inout("a0") arg0,
-            in("a1") arg1,
+            inout("a1") arg1,
             in("a2") arg2,
             clobber_abi("C"),
         );
     }
 
-    arg0
+    check_syscall_return(arg0, arg1)
 }
 
 pub unsafe fn syscall_4(
     code: usize,
     mut arg0: usize,
-    arg1: usize,
+    mut arg1: usize,
     arg2: usize,
     arg3: usize,
-) -> usize {
+) -> SysResult<usize> {
     unsafe {
         asm!("ecall",
             in("a7") code,
             inout("a0") arg0,
-            in("a1") arg1,
+            inout("a1") arg1,
             in("a2") arg2,
             in("a3") arg3,
             clobber_abi("C"),
         );
     }
 
-    arg0
+    check_syscall_return(arg0, arg1)
+}
+
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+pub enum SysError {
+    /// Device or resource is busy
+    Busy = 1,
+    /// Resource temporarily unavailable
+    Again = 2,
+    /// Cannot allocate memory
+    NoMem = 3,
+    /// Invalid argument
+    Invalid = 4,
+    /// Message is too long
+    TooLong = 5,
+    /// Function not implemented
+    NoSys = 6,
+}
+
+type SysResult<T> = Result<T, SysError>;
+
+fn check_syscall_return(result: usize, val: usize) -> SysResult<usize> {
+    use SysError::*;
+
+    let err = match result {
+        0 => return Ok(val),
+        1 => Busy,
+        2 => Again,
+        3 => NoMem,
+        4 => Invalid,
+        5 => TooLong,
+        6 => NoSys,
+        e => {
+            warn!("Unexpected syscall error: {e}");
+            Invalid
+        }
+    };
+
+    Err(err)
 }
 
 /// Suspend task for [a1:a0] MTIME ticks

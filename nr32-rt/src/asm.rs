@@ -100,7 +100,8 @@ _trap_handler:
 
     jal     _system_ecall
 
-    bnez    a1, .L_task_changed
+    srl     t0, a0, 16
+    bnez    t0, .L_task_changed
 
     /* Same task, we can return immediately */
     csrrw   sp, mscratch, sp
@@ -110,10 +111,14 @@ _trap_handler:
     mret
 
 .L_task_changed:
-    addi    a1, a1, -1
+    /* Clear the high bits of A0 since the caller shouldn't see them */
+    sll     a0, a0, 16
+    srl     a0, a0, 16
+
+    addi    t0, t0, -1
 
     /* Previous task has been killed, we don't have to worry about its registers */
-    bnez    a1, __return_to_user
+    bnez    t0, __return_to_user
 
     /* Previous task has been preempted, save its registers */
 
@@ -121,11 +126,12 @@ _trap_handler:
     mv      t0, sp
     mv      sp, s0
 
-    /* We only have to save callee-preserved registers + a0 (syscall return value) */
+    /* We only have to save callee-preserved registers + a0 (syscall result) and a1 (syscall return value)*/
     sw      gp,  (29 * 4)(sp)
     sw      tp,  (28 * 4)(sp)
     sw      s1,  (23 * 4)(sp)
     sw      a0,  (22 * 4)(sp)
+    sw      a1,  (21 * 4)(sp)
     sw      s2,  (14 * 4)(sp)
     sw      s3,  (13 * 4)(sp)
     sw      s4,  (12 * 4)(sp)
@@ -150,7 +156,7 @@ _trap_handler:
     /* Skip SP */
     sw      gp,  (29 * 4)(sp)
     sw      tp,  (28 * 4)(sp)
-    sw      t0, (27 * 4)(sp)
+    sw      t0,  (27 * 4)(sp)
     sw      t1,  (26 * 4)(sp)
     sw      t2,  (25 * 4)(sp)
     /* S0 banked above */

@@ -29,9 +29,11 @@ impl Allocator {
 unsafe impl GlobalAlloc for Allocator {
     unsafe fn alloc(&self, layout: Layout) -> *mut u8 {
         syscall::alloc(layout)
+            .map(|addr| addr.as_ptr())
+            .unwrap_or(core::ptr::null_mut())
     }
 
     unsafe fn dealloc(&self, ptr: *mut u8, _layout: Layout) {
-        syscall::free(ptr)
+        syscall::free(ptr).unwrap()
     }
 }

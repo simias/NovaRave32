@@ -1,5 +1,6 @@
 /// Input device (touchscreen, pad, ...) handling
 use crate::lock::{Mutex, MutexGuard};
+use crate::{SysError, SysResult};
 
 pub struct InputDev {
     /// If a transfer is ongoing, this is the target buffer for the RX data
@@ -20,20 +21,18 @@ pub fn get() -> MutexGuard<'static, InputDev> {
 
 impl InputDev {
     /// Attempt to start a transfer.
-    pub fn xmit(&mut self, port: u8, data_in_out: &'static mut [u8]) -> Result<(), ()> {
+    pub fn xmit(&mut self, port: u8, data_in_out: &'static mut [u8]) -> SysResult<()> {
         if self.xfer_target.is_some() {
-            // For now we only handle one transfer at a time
-            warn!("Attempted to start two input_dev xmit concurrently");
-            return Err(());
+            return Err(SysError::Busy);
         }
 
         if data_in_out.is_empty() {
-            return Err(());
+            return Err(SysError::Invalid);
         }
 
         if data_in_out.len() > TX_RX_FIFO_DEPTH {
             // We would have to chunk it
-            return Err(());
+            return Err(SysError::TooLong);
         }
 
         let mut conf = 0;

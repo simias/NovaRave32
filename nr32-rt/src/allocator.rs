@@ -1,6 +1,8 @@
 use crate::lock::{Mutex, MutexGuard};
+use crate::{SysError, SysResult};
 use core::alloc::{GlobalAlloc, Layout};
 use core::ptr;
+use core::ptr::NonNull;
 
 pub struct Allocator {
     /// Heap for use by the kernel
@@ -38,7 +40,7 @@ unsafe impl GlobalAlloc for Allocator {
     }
 
     unsafe fn dealloc(&self, ptr: *mut u8, _layout: Layout) {
-        self.system_heap().raw_free(ptr)
+        let _ = self.system_heap().raw_free(ptr);
     }
 }
 
@@ -78,6 +80,13 @@ impl NrHeap {
         } else {
             self.heap_start = 0;
         }
+    }
+
+    #[unsafe(link_section = ".text.fast")]
+    pub fn try_alloc(&self, size: usize, align: usize) -> SysResult<NonNull<u8>> {
+        let ptr = self.raw_alloc(size, align);
+
+        NonNull::new(ptr).ok_or(SysError::NoMem)
     }
 
     #[unsafe(link_section = ".text.fast")]
@@ -131,9 +140,9 @@ impl NrHeap {
     }
 
     #[unsafe(link_section = ".text.fast")]
-    pub fn raw_free(&self, ptr: *mut u8) {
+    pub fn raw_free(&self, ptr: *mut u8) -> SysResult<()> {
         if ptr.is_null() {
-            return;
+            return Err(SysError::Invalid);
         }
 
         let block_addr = (ptr as usize) - MemBlock::HEADER_SIZE;
@@ -143,7 +152,7 @@ impl NrHeap {
         unsafe {
             if !(*b).is_valid() {
                 error!("Attempt to free invalid block at {:x}", block_addr);
-                return;
+                return Err(SysError::Invalid);
             }
 
             (*b).flags &= !MemBlock::FLAG_USED;
@@ -168,6 +177,8 @@ impl NrHeap {
                 (*pb).relink();
             }
         }
+
+        Ok(())
     }
 }
 

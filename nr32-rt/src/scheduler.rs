@@ -1,6 +1,6 @@
 use crate::lock::{Mutex, MutexGuard};
 use crate::{
-    MTIME_HZ,
+    MTIME_HZ, SysError, SysResult,
     asm::{_idle_task, _task_runner},
 };
 use alloc::vec::Vec;
@@ -40,7 +40,8 @@ impl Scheduler {
 
         // Create the idle task.
         let idle_task = unsafe { core::mem::transmute::<usize, fn()>(_idle_task as usize) };
-        self.spawn_task(TaskType::System, idle_task as usize, 0, i32::MIN, 0, 0);
+        self.spawn_task(TaskType::System, idle_task as usize, 0, i32::MIN, 0, 0)
+            .unwrap();
         self.switch_to_task(0);
     }
 
@@ -56,8 +57,8 @@ impl Scheduler {
         prio: i32,
         stack_size: usize,
         gp: usize,
-    ) -> usize {
-        let (stack, sp) = stack_alloc(ty, stack_size + BANKED_REGISTER_LEN);
+    ) -> SysResult<usize> {
+        let (stack, sp) = stack_alloc(ty, stack_size + BANKED_REGISTER_LEN)?;
 
         // Put function in banked a1 and data in banked a0
         //
@@ -88,14 +89,14 @@ impl Scheduler {
         for (i, t) in self.tasks.iter_mut().enumerate() {
             if t.is_dead() {
                 *t = new_task;
-                return i;
+                return Ok(i);
             }
         }
 
         // No dead task, create a new one
         self.tasks.push(new_task);
 
-        self.tasks.len() - 1
+        Ok(self.tasks.len() - 1)
     }
 
     pub fn exit_current_task(&mut self) {
@@ -215,9 +216,9 @@ impl Scheduler {
     }
 
     #[unsafe(link_section = ".text.fast")]
-    pub fn futex_wake(&mut self, wake_futex_addr: usize, nwakeup: usize) -> usize {
+    pub fn futex_wake(&mut self, wake_futex_addr: usize, nwakeup: usize) -> SysResult<usize> {
         if nwakeup == 0 {
-            return 0;
+            return Err(SysError::Invalid);
         }
 
         let mut awoken = 0;
@@ -231,13 +232,13 @@ impl Scheduler {
                     awoken += 1;
 
                     if nwakeup == awoken {
-                        return awoken;
+                        break;
                     }
                 }
             }
         }
 
-        awoken
+        Ok(awoken)
     }
 
     #[unsafe(link_section = ".text.fast")]
@@ -303,14 +304,12 @@ impl Scheduler {
     }
 
     #[unsafe(link_section = ".text.fast")]
-    pub fn current_task_set_state(&mut self, state: TaskState) -> usize {
+    pub fn current_task_set_state(&mut self, state: TaskState) {
         let t = &mut self.tasks[self.cur_task];
 
         t.state = state;
 
         self.schedule();
-
-        0
     }
 
     #[unsafe(link_section = ".text.fast")]
@@ -393,7 +392,7 @@ fn schedule_preempt(until: u64) {
 
 /// Allocate a `stack_size`-byte long, 0-initialized stack and return a 16-byte aligned pointer to
 /// the top
-fn stack_alloc(ty: TaskType, stack_size: usize) -> (NonNull<u8>, usize) {
+fn stack_alloc(ty: TaskType, stack_size: usize) -> SysResult<(NonNull<u8>, usize)> {
     let stack_size = (stack_size + 0xf) & !0xf;
 
     let heap = match ty {
@@ -405,7 +404,7 @@ fn stack_alloc(ty: TaskType, stack_size: usize) -> (NonNull<u8>, usize) {
 
     let ptr = match NonNull::new(ptr) {
         Some(p) => p,
-        None => panic!("Couldn't allocate stack of {}B", stack_size),
+        None => return Err(SysError::NoMem),
     };
 
     let top = (ptr.as_ptr() as usize) + stack_size;
@@ -414,7 +413,7 @@ fn stack_alloc(ty: TaskType, stack_size: usize) -> (NonNull<u8>, usize) {
 
     assert!(top & 0xf == 0, "Allocated stack is not correctly aligned!");
 
-    (ptr, top)
+    Ok((ptr, top))
 }
 
 fn stack_free(ty: TaskType, stack: NonNull<u8>) {
@@ -423,7 +422,7 @@ fn stack_free(ty: TaskType, stack: NonNull<u8>) {
         TaskType::User => crate::ALLOCATOR.user_heap(),
     };
 
-    heap.raw_free(stack.as_ptr());
+    heap.raw_free(stack.as_ptr()).unwrap();
 }
 
 #[derive(Copy, Clone, PartialEq, Eq)]
