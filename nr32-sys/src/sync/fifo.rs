@@ -26,8 +26,9 @@ unsafe impl<T: Send, const N: usize> Sync for Fifo<T, N> {}
 
 impl<T, const N: usize> Fifo<T, N> {
     pub fn new() -> Self {
-        assert_ne!(N, 0);
-        assert_eq!(N & (N - 1), 0);
+        assert_ne!(N, 0, "Attempted to build an 0-len FIFO");
+        assert!(N <= (1 << (usize::BITS - 1)), "N too large");
+        assert_eq!(N & (N - 1), 0, "N is not a power of two");
 
         let seq = core::array::from_fn(AtomicUsize::new);
 
