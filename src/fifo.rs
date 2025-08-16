@@ -13,6 +13,7 @@ where
     T: Copy + Default,
 {
     pub fn new() -> Self {
+        assert_ne!(N, 0, "N must be greater than zero!");
         assert_eq!(N & (N - 1), 0, "N must be a power of two!");
         assert!(N < (1 << 31), "N is too large");
 

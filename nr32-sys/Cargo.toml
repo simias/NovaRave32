@@ -5,4 +5,5 @@ edition = "2024"
 description = "Generic library routines interfacing with nr32-rt"
 
 [dependencies]
+array-const-fn-init = "0.1.1"
 log = "0.4"

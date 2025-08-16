@@ -8,12 +8,14 @@ extern crate alloc;
 use core::time::Duration;
 
 use alloc::sync::Arc;
+use core::pin::Pin;
 use nr32_sys::allocator;
 use nr32_sys::gpu::send_to_gpu;
 use nr32_sys::math::{
     Angle, Fp32, matrix,
     matrix::{MAT0, MAT1, MAT2, MAT3, MAT4, MAT5, MAT7},
 };
+use nr32_sys::sync::Fifo;
 use nr32_sys::syscall::{ThreadBuilder, input_device, sleep, wait_for_vsync};
 
 #[global_allocator]
@@ -38,21 +40,22 @@ pub extern "C" fn nr32_main() {
 
     info!("Task is running!");
 
-    let sem = Arc::pin(nr32_sys::sync::Semaphore::new(0));
+    let fifo: Pin<Arc<Fifo<usize, 8>>> = Arc::pin(Fifo::new());
 
-    let sem2 = sem.clone();
+    let fifo_c = fifo.clone();
 
     ThreadBuilder::new()
         .stack_size(1024)
         .priority(-1)
         .spawn(move || {
             info!("One shot start");
-            sleep(Duration::from_secs(3));
-            info!("One shot end");
-            sem2.as_ref().post();
-        });
+            loop {
+                sleep(Duration::from_secs(1));
+                let c = fifo_c.as_ref().pop();
 
-    sem.as_ref().wait();
+                info!("Got {}", c);
+            }
+        });
 
     start_audio();
 
@@ -96,7 +99,13 @@ pub extern "C" fn nr32_main() {
 
     let mut prev_touch: Option<(u16, u16)> = None;
 
+    let mut c = 1000;
     loop {
+        info!("Pushing {}", c);
+        fifo.as_ref().push(c);
+
+        c += 1;
+
         let touch = read_touch_screen();
 
         if let (Some(p), Some(t)) = (prev_touch, touch) {
