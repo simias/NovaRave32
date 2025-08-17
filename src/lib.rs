@@ -150,6 +150,7 @@ impl NoRa32 {
         debug_assert!(addr & 3 == 0);
 
         if let Some(off) = RAM.contains(addr) {
+            self.cpu.ram_write(addr);
             self.ram[(off >> 2) as usize] = v;
             return;
         }
@@ -195,6 +196,7 @@ impl NoRa32 {
         debug_assert!(addr & 1 == 0);
 
         if let Some(off) = RAM.contains(addr) {
+            self.cpu.ram_write(addr);
             let wo = (off >> 2) as usize;
             let bitpos = (off & 2) << 3;
 
@@ -211,6 +213,7 @@ impl NoRa32 {
     /// Store byte `v` at `addr`.
     fn store_byte(&mut self, addr: u32, v: u8) {
         if let Some(off) = RAM.contains(addr) {
+            self.cpu.ram_write(addr);
             let wo = (off >> 2) as usize;
             let bitpos = (off & 3) << 3;
 

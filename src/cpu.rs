@@ -213,6 +213,15 @@ impl Cpu {
     fn csr_set(&mut self, csr: u16, v: u32) -> u32 {
         self.csr_and_or(csr, 0, v)
     }
+
+    pub fn ram_write(&mut self, addr: u32) {
+        // Make sure to invalidate the reservation if it hits the same memory cell
+        if let Some(r_addr) = self.reservation {
+            if r_addr >> 4 == addr >> 4 {
+                self.reservation = None;
+            }
+        }
+    }
 }
 
 impl fmt::Debug for Cpu {
@@ -701,7 +710,8 @@ pub fn step(m: &mut NoRa32) {
 
                         m.cpu.reservation = Some(addr);
 
-                        m.cpu.xset(rd, v)
+                        m.cpu.xset(rd, v);
+                        m.tick(1);
                     }
                     None => panic!("LR.W not targeting RAM! {:x} {:?}", addr, m.cpu),
                 }
@@ -710,7 +720,10 @@ pub fn step(m: &mut NoRa32) {
             }
         }
         Instruction::Scw { rd, rs1, rs2 } => {
-            // Invalidate any previous reservation
+            // Invalidate any previous reservation:
+            //
+            // "Regardless of success or failure, executing an SC.W instruction invalidates any
+            // reservation held by this hart."
             let reservation = m.cpu.reservation.take();
             let addr = m.cpu.xget(rs1);
 
