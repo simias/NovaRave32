@@ -129,6 +129,7 @@ _trap_handler:
     /* We only have to save callee-preserved registers + a0 (syscall result) and a1 (syscall return value)*/
     sw      gp,  (29 * 4)(sp)
     sw      tp,  (28 * 4)(sp)
+    /* S0 banked above */
     sw      s1,  (23 * 4)(sp)
     sw      a0,  (22 * 4)(sp)
     sw      a1,  (21 * 4)(sp)
