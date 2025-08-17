@@ -136,6 +136,7 @@ impl<T, const N: usize> Fifo<T, N> {
             } else {
                 rp = self.read_idx.load(Relaxed);
             }
+
             core::hint::spin_loop();
         }
     }
