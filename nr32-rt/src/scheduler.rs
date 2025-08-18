@@ -6,6 +6,8 @@ use crate::{
 use alloc::vec::Vec;
 use core::ptr::NonNull;
 
+type TaskId = usize;
+
 pub struct Scheduler {
     tasks: Vec<Task>,
     /// Which task of `tasks` is currently running
@@ -57,7 +59,7 @@ impl Scheduler {
         prio: i32,
         stack_size: usize,
         gp: usize,
-    ) -> SysResult<usize> {
+    ) -> SysResult<TaskId> {
         let (stack, sp) = stack_alloc(ty, stack_size + BANKED_REGISTER_LEN)?;
 
         // Put function in banked a1 and data in banked a0
@@ -216,43 +218,72 @@ impl Scheduler {
     }
 
     #[unsafe(link_section = ".text.fast")]
+    fn futex_wake_one(&mut self, wake_futex_addr: usize) -> Option<TaskId> {
+        // Look for the highest-prio thread blocking on the futex
+        let mut candidate = None;
+        let mut candidate_prio = i32::MIN;
+
+        for (i, t) in self.tasks.iter().enumerate() {
+            if let TaskState::Sleeping { futex_addr, .. } = t.state {
+                if futex_addr == wake_futex_addr && t.prio >= candidate_prio {
+                    candidate = Some(i);
+                    candidate_prio = t.prio;
+                }
+            }
+        }
+
+        if let Some(i) = candidate {
+            self.tasks[i].state = TaskState::Running;
+        }
+
+        candidate
+    }
+
+    #[unsafe(link_section = ".text.fast")]
     pub fn futex_wake(&mut self, wake_futex_addr: usize, nwakeup: usize) -> SysResult<usize> {
         if nwakeup == 0 {
             return Err(SysError::Invalid);
         }
 
-        let mut awoken = 0;
+        let cur_prio = self.tasks[self.cur_task].prio;
 
-        // XXX we may want to wake high priority tasks first. Or alternatively the tasks that have
-        // been sleeping for the longest duration.
-        for t in &mut self.tasks {
-            if let TaskState::Sleeping { futex_addr, .. } = t.state {
-                if futex_addr == wake_futex_addr {
-                    t.state = TaskState::Running;
-                    awoken += 1;
+        let mut needs_schedule = false;
+        let mut nawoken = 0;
 
-                    if nwakeup == awoken {
-                        break;
+        for _ in 0..nwakeup {
+            match self.futex_wake_one(wake_futex_addr) {
+                Some(t) => {
+                    nawoken += 1;
+                    if self.tasks[t].prio > cur_prio {
+                        needs_schedule = true;
                     }
                 }
+                None => break,
             }
         }
 
-        Ok(awoken)
+        if needs_schedule {
+            self.schedule();
+        }
+
+        Ok(nawoken)
     }
 
     #[unsafe(link_section = ".text.fast")]
     pub fn wake_up_state(&mut self, state: TaskState) {
-        let mut task_awoken = false;
+        let cur_prio = self.tasks[self.cur_task].prio;
+        let mut needs_schedule = false;
 
         for t in &mut self.tasks {
             if t.state == state {
-                task_awoken = true;
+                if t.prio > cur_prio {
+                    needs_schedule = true;
+                }
                 t.state = TaskState::Running;
             }
         }
 
-        if task_awoken {
+        if needs_schedule {
             self.schedule();
         }
 
@@ -313,7 +344,7 @@ impl Scheduler {
     }
 
     #[unsafe(link_section = ".text.fast")]
-    fn switch_to_task(&mut self, task_id: usize) {
+    fn switch_to_task(&mut self, task_id: TaskId) {
         let task = &self.tasks[task_id];
 
         self.cur_task = task_id;
