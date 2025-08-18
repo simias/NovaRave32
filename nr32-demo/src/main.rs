@@ -8,7 +8,6 @@ extern crate alloc;
 use core::time::Duration;
 
 use alloc::sync::Arc;
-use core::pin::Pin;
 use nr32_sys::allocator;
 use nr32_sys::gpu::send_to_gpu;
 use nr32_sys::math::{
@@ -35,7 +34,7 @@ mod panic_handler {
 
 struct DmaOp {
     _v: usize,
-    dma_done: Option<Pin<Arc<Semaphore>>>,
+    dma_done: Option<Arc<Semaphore>>,
 }
 
 #[unsafe(no_mangle)]
@@ -45,7 +44,7 @@ pub extern "C" fn nr32_main() {
 
     info!("Task is running!");
 
-    let fifo: Pin<Arc<Fifo<DmaOp, 8>>> = Arc::pin(Fifo::new());
+    let fifo: Arc<Fifo<DmaOp, 8>> = Arc::new(Fifo::new());
 
     let fifo_c = fifo.clone();
 
@@ -57,7 +56,7 @@ pub extern "C" fn nr32_main() {
             loop {
                 let c = fifo_c.as_ref().pop();
                 if let Some(s) = c.dma_done {
-                    s.as_ref().post();
+                    s.post();
                 }
             }
         })
@@ -105,7 +104,7 @@ pub extern "C" fn nr32_main() {
 
     let mut prev_touch: Option<(u16, u16)> = None;
 
-    let s = Arc::pin(Semaphore::new(0));
+    let s = Arc::new(Semaphore::new(0));
 
     let mut c = 1000;
     loop {
@@ -115,7 +114,7 @@ pub extern "C" fn nr32_main() {
         });
         c += 1;
 
-        s.as_ref().wait();
+        s.wait();
 
         let touch = read_touch_screen();
 

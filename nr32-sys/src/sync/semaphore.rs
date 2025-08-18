@@ -1,6 +1,4 @@
 use crate::syscall;
-use core::marker::PhantomPinned;
-use core::pin::Pin;
 use core::sync::atomic::{
     AtomicUsize,
     Ordering::{AcqRel, Acquire, Relaxed, Release},
@@ -12,7 +10,6 @@ pub struct Semaphore {
     val: AtomicUsize,
     /// Upper bound on the number of threads currently waiting on the semaphore
     waiting: AtomicUsize,
-    _pin: PhantomPinned,
 }
 
 impl Semaphore {
@@ -20,7 +17,6 @@ impl Semaphore {
         Semaphore {
             val: AtomicUsize::new(v),
             waiting: AtomicUsize::new(0),
-            _pin: PhantomPinned,
         }
     }
 
@@ -48,7 +44,7 @@ impl Semaphore {
     }
 
     /// Decrement the semaphore, blocking if it's <= 0
-    pub fn wait(self: Pin<&Self>) {
+    pub fn wait(&self) {
         loop {
             if self.try_wait() {
                 // Success
@@ -66,7 +62,7 @@ impl Semaphore {
         }
     }
 
-    pub fn post(self: Pin<&Self>) {
+    pub fn post(&self) {
         self.val.fetch_add(1, Release);
 
         if self.waiting.load(Acquire) > 0 {
@@ -76,8 +72,8 @@ impl Semaphore {
         }
     }
 
-    fn futex_addr(self: Pin<&Self>) -> usize {
-        &self.get_ref().val as *const _ as usize
+    fn futex_addr(&self) -> usize {
+        &self.val as *const _ as usize
     }
 }
 

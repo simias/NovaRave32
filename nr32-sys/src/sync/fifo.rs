@@ -7,7 +7,6 @@ use core::sync::atomic::{
     AtomicUsize,
     Ordering::{AcqRel, Acquire, Relaxed, Release},
 };
-use core::{marker::PhantomPinned, pin::Pin};
 
 /// Bounded MPMC FIFO. N must be a power of two.
 pub struct Fifo<T, const N: usize> {
@@ -18,7 +17,6 @@ pub struct Fifo<T, const N: usize> {
     read_idx: AtomicUsize,
     empty_cells: Semaphore,
     filled_cells: Semaphore,
-    _pin: PhantomPinned,
 }
 
 unsafe impl<T: Send, const N: usize> Send for Fifo<T, N> {}
@@ -41,27 +39,16 @@ impl<T, const N: usize> Fifo<T, N> {
             read_idx: AtomicUsize::new(0),
             empty_cells: Semaphore::new(N),
             filled_cells: Semaphore::new(0),
-            _pin: PhantomPinned,
         }
     }
 
-    fn filled_cells_pin(self: Pin<&Self>) -> Pin<&Semaphore> {
-        unsafe { Pin::new_unchecked(&self.get_ref().filled_cells) }
-    }
-
-    fn empty_cells_pin(self: Pin<&Self>) -> Pin<&Semaphore> {
-        unsafe { Pin::new_unchecked(&self.get_ref().empty_cells) }
-    }
-
-    pub fn do_push(self: Pin<&Self>, v: T) {
+    pub fn do_push(&self, v: T) {
         let mut wp = self.write_idx.load(Relaxed);
 
         loop {
             let wseq = self.seq[wp & (N - 1)].load(Acquire);
 
-            let dif = wseq as isize - wp as isize;
-
-            if dif == 0 {
+            if wseq == wp {
                 // Slot is free, attempt to claim it by moving the write pointer forward
                 match self
                     .write_idx
@@ -74,7 +61,7 @@ impl<T, const N: usize> Fifo<T, N> {
                         }
                         // Increment seq so that the reader knows it's available
                         self.seq[wp & (N - 1)].store(wp.wrapping_add(1), Release);
-                        self.filled_cells_pin().post();
+                        self.filled_cells.post();
                         break;
                     }
                     // Somebody claimed this slot already, retry
@@ -90,14 +77,14 @@ impl<T, const N: usize> Fifo<T, N> {
     }
 
     /// Push to the queue, blocking if the queue is full
-    pub fn push(self: Pin<&Self>, v: T) {
-        self.empty_cells_pin().wait();
+    pub fn push(&self, v: T) {
+        self.empty_cells.wait();
 
         self.do_push(v)
     }
 
     /// Attempt to push to the queue, returns the item in an error if the queue is full
-    pub fn try_push(self: Pin<&Self>, v: T) -> Result<(), T> {
+    pub fn try_push(&self, v: T) -> Result<(), T> {
         if !self.empty_cells.try_wait() {
             // No empty cells left
             return Err(v);
@@ -108,15 +95,13 @@ impl<T, const N: usize> Fifo<T, N> {
         Ok(())
     }
 
-    fn do_pop(self: Pin<&Self>) -> T {
+    fn do_pop(&self) -> T {
         let mut rp = self.read_idx.load(Relaxed);
 
         loop {
             let rseq = self.seq[rp & (N - 1)].load(Acquire);
 
-            let dif = rseq as isize - rp as isize;
-
-            if dif == 1 {
+            if rseq == rp.wrapping_add(1) {
                 // Slot is available to be read
                 match self
                     .read_idx
@@ -127,7 +112,7 @@ impl<T, const N: usize> Fifo<T, N> {
                         let v = unsafe { (*self.elems[rp & (N - 1)].get()).assume_init_read() };
                         // Move seq to the next writer round
                         self.seq[rp & (N - 1)].store(rp.wrapping_add(N), Release);
-                        self.empty_cells_pin().post();
+                        self.empty_cells.post();
                         break v;
                     }
                     // Somebody claimed this slot already, retry
@@ -141,14 +126,14 @@ impl<T, const N: usize> Fifo<T, N> {
         }
     }
 
-    pub fn pop(self: Pin<&Self>) -> T {
-        self.filled_cells_pin().wait();
+    pub fn pop(&self) -> T {
+        self.filled_cells.wait();
 
         self.do_pop()
     }
 
-    pub fn try_pop(self: Pin<&Self>) -> Option<T> {
-        if !self.filled_cells_pin().try_wait() {
+    pub fn try_pop(&self) -> Option<T> {
+        if !self.filled_cells.try_wait() {
             return None;
         }
 
