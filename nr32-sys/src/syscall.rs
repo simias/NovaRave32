@@ -23,7 +23,9 @@ fn duration_to_ticks(duration: Duration) -> u64 {
 pub fn sleep(duration: Duration) {
     let ticks = duration_to_ticks(duration);
 
-    unsafe { syscall_2(SYS_SLEEP, ticks as usize, (ticks >> 32) as usize) }.unwrap();
+    let r = unsafe { syscall_2(SYS_SLEEP, ticks as usize, (ticks >> 32) as usize) };
+
+    assert_eq!(r, Err(SysError::TimeOut))
 }
 
 pub fn wait_for_vsync() {
@@ -74,10 +76,19 @@ pub fn dbg_puts(s: &str) {
 pub fn futex_wait(atomic: &AtomicUsize, val: usize, timeout: Option<Duration>) -> SysResult<()> {
     let ticks = match timeout {
         Some(d) => duration_to_ticks(d),
-        None => !0
+        None => !0,
     };
 
-    unsafe { syscall_4(SYS_FUTEX_WAIT, atomic as *const _ as usize, val, ticks as usize, (ticks >> 32) as usize) }.map(|_| ())
+    unsafe {
+        syscall_4(
+            SYS_FUTEX_WAIT,
+            atomic as *const _ as usize,
+            val,
+            ticks as usize,
+            (ticks >> 32) as usize,
+        )
+    }
+    .map(|_| ())
 }
 
 pub fn futex_wake(atomic: &AtomicUsize, nwake: usize) -> SysResult<usize> {
@@ -149,7 +160,7 @@ impl Default for ThreadBuilder {
     }
 }
 
-pub unsafe fn syscall_0(code: usize) -> SysResult<usize> {
+unsafe fn syscall_0(code: usize) -> SysResult<usize> {
     let mut arg0;
     let mut arg1;
 
@@ -247,6 +258,8 @@ pub enum SysError {
     TooLong = 5,
     /// Function not implemented
     NoSys = 6,
+    /// Timeout
+    TimeOut = 7,
 }
 
 type SysResult<T> = Result<T, SysError>;
@@ -262,6 +275,7 @@ fn check_syscall_return(result: usize, val: usize) -> SysResult<usize> {
         4 => Invalid,
         5 => TooLong,
         6 => NoSys,
+        7 => TimeOut,
         e => {
             warn!("Unexpected syscall error: {e}");
             Invalid
@@ -272,6 +286,8 @@ fn check_syscall_return(result: usize, val: usize) -> SysResult<usize> {
 }
 
 /// Suspend task for [a1:a0] MTIME ticks
+///
+/// Always returns SysError::TimeOut
 pub const SYS_SLEEP: usize = 0x01;
 
 /// Put task to sleep until VSYNC

@@ -62,22 +62,6 @@ impl Scheduler {
     ) -> SysResult<TaskId> {
         let (stack, sp) = stack_alloc(ty, stack_size + BANKED_REGISTER_LEN)?;
 
-        // Put function in banked a1 and data in banked a0
-        //
-        // The layout should match the banking scheme in asm.rs
-        unsafe {
-            let p = sp - BANKED_REGISTER_LEN;
-
-            let p = p as *mut usize;
-
-            // A0
-            *(p.offset(22)) = data;
-            // A1
-            *(p.offset(21)) = entry;
-            // GP
-            *(p.offset(29)) = gp;
-        };
-
         let new_task = Task {
             sp: sp - BANKED_REGISTER_LEN,
             ra: _task_runner as usize,
@@ -87,6 +71,10 @@ impl Scheduler {
             stack,
             run_ticks: 0,
         };
+
+        new_task.set_banked_reg(Reg::A0, data);
+        new_task.set_banked_reg(Reg::A1, entry);
+        new_task.set_banked_reg(Reg::Gp, gp);
 
         for (i, t) in self.tasks.iter_mut().enumerate() {
             if t.is_dead() {
@@ -212,6 +200,7 @@ impl Scheduler {
             if let TaskState::Sleeping { until, .. } = t.state {
                 if now >= until {
                     t.state = TaskState::Running;
+                    t.set_banked_reg(Reg::A0, SysError::TimeOut as usize);
                 }
             }
         }
@@ -394,6 +383,13 @@ impl Task {
     fn is_dead(&self) -> bool {
         matches!(self.state, TaskState::Dead)
     }
+
+    fn set_banked_reg(&self, reg: Reg, v: usize) {
+        let sp = self.sp as *mut usize;
+
+        // The layout should match the banking scheme in asm.rs
+        unsafe { *(sp.add(32 - reg as usize)) = v };
+    }
 }
 
 #[derive(Copy, Clone, PartialEq, Eq)]
@@ -505,4 +501,41 @@ fn mtimecmp_set(cmp: u64) {
         MTIMECMP_H.write_volatile(h);
         MTIMECMP_L.write_volatile(l);
     }
+}
+
+#[allow(dead_code)]
+#[derive(PartialEq, Eq, Debug, Copy, Clone)]
+enum Reg {
+    Zero = 0,
+    Ra = 1,
+    Sp = 2,
+    Gp = 3,
+    Tp = 4,
+    T0 = 5,
+    T1 = 6,
+    T2 = 7,
+    S0 = 8,
+    S1 = 9,
+    A0 = 10,
+    A1 = 11,
+    A2 = 12,
+    A3 = 13,
+    A4 = 14,
+    A5 = 15,
+    A6 = 16,
+    A7 = 17,
+    S2 = 18,
+    S3 = 19,
+    S4 = 20,
+    S5 = 21,
+    S6 = 22,
+    S7 = 23,
+    S8 = 24,
+    S9 = 25,
+    S10 = 26,
+    S11 = 27,
+    T3 = 28,
+    T4 = 29,
+    T5 = 30,
+    T6 = 31,
 }
