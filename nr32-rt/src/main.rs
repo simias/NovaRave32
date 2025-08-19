@@ -224,12 +224,7 @@ pub extern "C" fn handle_ecall(
         syscall::SYS_FUTEX_WAIT => {
             let futex_addr = arg0;
             let expected_val = arg1;
-            let mut ticks = (arg2 as u64) | ((arg3 as u64) << 32);
-
-            if ticks == 0 {
-                // "infinite" delay
-                ticks = !0;
-            }
+            let ticks = (arg2 as u64) | ((arg3 as u64) << 32);
 
             let v = unsafe {
                 let p = futex_addr as *const AtomicUsize;
@@ -238,7 +233,9 @@ pub extern "C" fn handle_ecall(
             };
 
             if v == expected_val {
-                sched.sleep_current_task(futex_addr, ticks);
+                if ticks > 0 {
+                    sched.sleep_current_task(futex_addr, ticks);
+                }
                 Ok(0)
             } else {
                 Err(SysError::Again)

@@ -165,12 +165,12 @@ impl NoRa32 {
             return;
         }
 
-        if let Some(off) = IRQ_CONTROLLER.contains(addr) {
-            return irq::store_word(self, off, v);
-        }
-
         if let Some(off) = SYS_TIMER.contains(addr) {
             return systimer::store_word(self, off, v);
+        }
+
+        if let Some(off) = IRQ_CONTROLLER.contains(addr) {
+            return irq::store_word(self, off, v);
         }
 
         if let Some(off) = INPUT_DEV.contains(addr) {
@@ -263,12 +263,12 @@ impl NoRa32 {
             return self.rom.get((off >> 2) as usize).cloned().unwrap_or(!0);
         }
 
-        if let Some(off) = IRQ_CONTROLLER.contains(addr) {
-            return irq::load_word(self, off);
-        }
-
         if let Some(off) = SYS_TIMER.contains(addr) {
             return systimer::load_word(self, off);
+        }
+
+        if let Some(off) = IRQ_CONTROLLER.contains(addr) {
+            return irq::load_word(self, off);
         }
 
         if let Some(off) = GPU.contains(addr) {

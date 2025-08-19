@@ -3,16 +3,25 @@ use core::alloc::Layout;
 use core::arch::asm;
 use core::ptr::NonNull;
 use core::time::Duration;
+use core::sync::atomic::AtomicUsize;
 
 /// Frequency of the MTIME timer tick
 const MTIME_HZ: u32 = 44_100 * 16;
 
-pub fn sleep(duration: Duration) {
-    // Convert in number of ticks
-    let micros = duration.as_micros() as u64;
-    let f = u64::from(MTIME_HZ);
+fn duration_to_ticks(duration: Duration) -> u64 {
+    if duration.as_secs() < 0xffff_ffff {
+        let micros = duration.as_micros() as u64;
+        let f = u64::from(MTIME_HZ);
 
-    let ticks = (micros * f + 1_000_000 / 2) / 1_000_000;
+        (micros * f + 1_000_000 / 2) / 1_000_000
+    } else {
+        // Duration so large it may as well be infinite
+        !0
+    }
+}
+
+pub fn sleep(duration: Duration) {
+    let ticks = duration_to_ticks(duration);
 
     unsafe { syscall_2(SYS_SLEEP, ticks as usize, (ticks >> 32) as usize) }.unwrap();
 }
@@ -60,6 +69,19 @@ pub fn dbg_puts(s: &str) {
     let ptr = s.as_ptr();
 
     unsafe { syscall_2(SYS_DBG_PUTS, ptr as usize, len).unwrap() };
+}
+
+pub fn futex_wait(atomic: &AtomicUsize, val: usize, timeout: Option<Duration>) -> SysResult<()> {
+    let ticks = match timeout {
+        Some(d) => duration_to_ticks(d),
+        None => !0
+    };
+
+    unsafe { syscall_4(SYS_FUTEX_WAIT, atomic as *const _ as usize, val, ticks as usize, (ticks >> 32) as usize) }.map(|_| ())
+}
+
+pub fn futex_wake(atomic: &AtomicUsize, nwake: usize) -> SysResult<usize> {
+    unsafe { syscall_2(SYS_FUTEX_WAKE, atomic as *const _ as usize, nwake) }
 }
 
 #[derive(Copy, Clone)]
@@ -143,7 +165,7 @@ pub unsafe fn syscall_0(code: usize) -> SysResult<usize> {
     check_syscall_return(arg0, arg1)
 }
 
-pub unsafe fn syscall_1(code: usize, mut arg0: usize) -> SysResult<usize> {
+unsafe fn syscall_1(code: usize, mut arg0: usize) -> SysResult<usize> {
     let mut arg1;
 
     unsafe {
@@ -158,7 +180,7 @@ pub unsafe fn syscall_1(code: usize, mut arg0: usize) -> SysResult<usize> {
     check_syscall_return(arg0, arg1)
 }
 
-pub unsafe fn syscall_2(code: usize, mut arg0: usize, mut arg1: usize) -> SysResult<usize> {
+unsafe fn syscall_2(code: usize, mut arg0: usize, mut arg1: usize) -> SysResult<usize> {
     unsafe {
         asm!("ecall",
             in("a7") code,
@@ -171,7 +193,7 @@ pub unsafe fn syscall_2(code: usize, mut arg0: usize, mut arg1: usize) -> SysRes
     check_syscall_return(arg0, arg1)
 }
 
-pub unsafe fn syscall_3(
+unsafe fn syscall_3(
     code: usize,
     mut arg0: usize,
     mut arg1: usize,
@@ -190,7 +212,7 @@ pub unsafe fn syscall_3(
     check_syscall_return(arg0, arg1)
 }
 
-pub unsafe fn syscall_4(
+unsafe fn syscall_4(
     code: usize,
     mut arg0: usize,
     mut arg1: usize,
@@ -300,9 +322,9 @@ pub const SYS_SHUTDOWN: usize = 0x09;
 
 /// Futex wait
 ///
-/// - a0: address of an AtomicIsize
+/// - a0: address of an AtomicUsize
 /// - a1: expected value of the AtomicIsize in a0 (if the values differ, the function returns).
-/// - [a2:a3]: wait timeout in MTIME ticks (0 for infinite)
+/// - [a3:a2]: wait timeout in MTIME ticks (0 for infinite)
 ///
 /// If the values differ, the call returns immediately with EAGAIN
 ///
@@ -311,6 +333,8 @@ pub const SYS_FUTEX_WAIT: usize = 0x0a;
 
 /// Futex wake
 ///
-/// - a0: address of an AtomicIsize
+/// - a0: address of an AtomicUsize
 /// - a1: number of waiting threads to wake up
+///
+/// Returns the number of threads successfully awoken
 pub const SYS_FUTEX_WAKE: usize = 0x0b;

@@ -49,9 +49,9 @@ pub const SYS_SHUTDOWN: usize = 0x09;
 
 /// Futex wait
 ///
-/// - a0: address of an AtomicIsize
+/// - a0: address of an AtomicUsize
 /// - a1: expected value of the AtomicIsize in a0 (if the values differ, the function returns).
-/// - [a2:a3]: wait timeout in MTIME ticks (0 for infinite)
+/// - [a3:a2]: wait timeout in MTIME ticks (0 for infinite)
 ///
 /// If the values differ, the call returns immediately with EAGAIN
 ///
@@ -60,6 +60,8 @@ pub const SYS_FUTEX_WAIT: usize = 0x0a;
 
 /// Futex wake
 ///
-/// - a0: address of an AtomicIsize
+/// - a0: address of an AtomicUsize
 /// - a1: number of waiting threads to wake up
+///
+/// Returns the number of threads successfully awoken
 pub const SYS_FUTEX_WAKE: usize = 0x0b;

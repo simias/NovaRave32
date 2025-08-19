@@ -53,10 +53,7 @@ impl Semaphore {
 
             self.waiting.fetch_add(1, Release);
 
-            unsafe {
-                // We ignore the return value because we'll just try again if we got raced
-                let _ = syscall::syscall_4(syscall::SYS_FUTEX_WAIT, self.futex_addr(), 0, 0, 0);
-            }
+            let _ = syscall::futex_wait(&self.val, 0, None);
 
             self.waiting.fetch_sub(1, Release);
         }
@@ -66,14 +63,8 @@ impl Semaphore {
         self.val.fetch_add(1, Release);
 
         if self.waiting.load(Acquire) > 0 {
-            unsafe {
-                syscall::syscall_2(syscall::SYS_FUTEX_WAKE, self.futex_addr(), 1).unwrap();
-            }
+            syscall::futex_wake(&self.val, 1).unwrap();
         }
-    }
-
-    fn futex_addr(&self) -> usize {
-        &self.val as *const _ as usize
     }
 }
 
