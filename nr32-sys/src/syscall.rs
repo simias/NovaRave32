@@ -2,8 +2,8 @@ use alloc::boxed::Box;
 use core::alloc::Layout;
 use core::arch::asm;
 use core::ptr::NonNull;
-use core::time::Duration;
 use core::sync::atomic::AtomicUsize;
+use core::time::Duration;
 
 /// Frequency of the MTIME timer tick
 const MTIME_HZ: u32 = 44_100 * 16;
@@ -99,18 +99,33 @@ pub fn futex_wake(atomic: &AtomicUsize, nwake: usize) -> SysResult<usize> {
 pub struct ThreadBuilder {
     priority: i32,
     stack_size: usize,
+    /// Global pointer. Defaults to the builder thread's current GP.
+    gp: usize,
 }
 
 impl ThreadBuilder {
+    #[inline(never)]
     pub fn new() -> ThreadBuilder {
+        let gp: usize;
+        unsafe {
+            asm!("mv {0}, gp", out(reg) gp);
+        }
+
         ThreadBuilder {
             priority: 0,
+            gp,
             stack_size: 4096,
         }
     }
 
     pub fn stack_size(mut self, stack_size: usize) -> ThreadBuilder {
         self.stack_size = stack_size;
+
+        self
+    }
+
+    pub fn gp(mut self, gp: usize) -> ThreadBuilder {
+        self.gp = gp;
 
         self
     }
@@ -132,12 +147,13 @@ impl ThreadBuilder {
         let trampoline = Self::trampoline::<F>;
 
         unsafe {
-            syscall_4(
+            syscall_5(
                 SYS_SPAWN_TASK,
                 trampoline as usize,
                 closure as *mut u8 as usize,
                 self.priority as usize,
                 self.stack_size,
+                self.gp,
             )
         }
     }
@@ -244,6 +260,29 @@ unsafe fn syscall_4(
     check_syscall_return(arg0, arg1)
 }
 
+unsafe fn syscall_5(
+    code: usize,
+    mut arg0: usize,
+    mut arg1: usize,
+    arg2: usize,
+    arg3: usize,
+    arg4: usize,
+) -> SysResult<usize> {
+    unsafe {
+        asm!("ecall",
+            in("a7") code,
+            inout("a0") arg0,
+            inout("a1") arg1,
+            in("a2") arg2,
+            in("a3") arg3,
+            in("a4") arg4,
+            clobber_abi("C"),
+        );
+    }
+
+    check_syscall_return(arg0, arg1)
+}
+
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
 pub enum SysError {
     /// Device or resource is busy
@@ -298,7 +337,8 @@ pub const SYS_WAIT_FOR_VSYNC: usize = 0x02;
 /// - a0: thread entry point
 /// - a1: thread data
 /// - a2: priority
-/// - a3: stack size
+/// - a3: stack pointer
+/// - a4: global pointer
 pub const SYS_SPAWN_TASK: usize = 0x03;
 
 /// Kills the current thread

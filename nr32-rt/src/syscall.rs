@@ -12,6 +12,7 @@ pub const SYS_WAIT_FOR_VSYNC: usize = 0x02;
 /// - a1: thread data
 /// - a2: priority
 /// - a3: stack size
+/// - a4: global pointer
 pub const SYS_SPAWN_TASK: usize = 0x03;
 
 /// Kills the current thread
