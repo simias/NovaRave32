@@ -20,4 +20,4 @@ pub fn gpu_status() -> u32 {
     unsafe { GPU_CMD.read_volatile() }
 }
 
-const GPU_CMD: *mut u32 = 0x1001_0000 as *mut u32;
+const GPU_CMD: *mut u32 = 0x4001_0000 as *mut u32;

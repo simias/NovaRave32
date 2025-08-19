@@ -410,24 +410,9 @@ cfg_if! {
     }
 }
 
-const DEBUG: Range = Range {
-    base: 0x1000_0000,
-    len: 1024,
-};
-
-const GPU: Range = Range {
-    base: 0x1001_0000,
-    len: 1024,
-};
-
-const SPU: Range = Range {
-    base: 0x1002_0000,
-    len: 1024,
-};
-
-const INPUT_DEV: Range = Range {
-    base: 0x1003_0000,
-    len: 1024,
+const RAM: Range = Range {
+    base: 0x0000_0000,
+    len: 2 * 1024 * 1024,
 };
 
 const ROM: Range = Range {
@@ -435,19 +420,34 @@ const ROM: Range = Range {
     len: 64 * 1024 * 1024,
 };
 
-const RAM: Range = Range {
+const DEBUG: Range = Range {
     base: 0x4000_0000,
-    len: 2 * 1024 * 1024,
+    len: 1024,
 };
 
-const IRQ_CONTROLLER: Range = Range {
+const GPU: Range = Range {
+    base: 0x4001_0000,
+    len: 1024,
+};
+
+const SPU: Range = Range {
+    base: 0x4002_0000,
+    len: 1024,
+};
+
+const INPUT_DEV: Range = Range {
+    base: 0x4003_0000,
+    len: 1024,
+};
+
+const SYS_TIMER: Range = Range {
     base: 0xffff_ffe0,
     len: 16,
 };
 
-const SYS_TIMER: Range = Range {
+const IRQ_CONTROLLER: Range = Range {
     base: 0xffff_fff0,
-    len: 16,
+    len: 8,
 };
 
 type CycleCounter = i32;

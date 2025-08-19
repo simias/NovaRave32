@@ -10,7 +10,7 @@ build-rom $RUSTFLAGS="-C link-arg=-Tmemory.x -C target-feature=+relax":
 
 build-cart:
     just build-rom
-    cd multitool && cargo run -- cart ../nr32-rt/target/riscv32imac-unknown-none-elf/release/nr32-rt ../nr32-demo/target/riscv32imac-unknown-none-elf/release/nr32-demo -o ../nr32-web/public/cart.nr32
+    cd multitool && cargo run -- -v cart ../nr32-rt/target/riscv32imac-unknown-none-elf/release/nr32-rt ../nr32-demo/target/riscv32imac-unknown-none-elf/release/nr32-demo -o ../nr32-web/public/cart.nr32
 
 web-build:
     cd nr32-web && npm run build

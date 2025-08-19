@@ -93,7 +93,7 @@ fn input_dev_enable_irq(enable: bool) {
     }
 }
 
-const INPUT_DEV_BASE: usize = 0x1003_0000;
+const INPUT_DEV_BASE: usize = 0x4003_0000;
 const INPUT_DEV_CONF: *mut u32 = INPUT_DEV_BASE as *mut u32;
 const INPUT_DEV_PORT: *mut u8 = (INPUT_DEV_BASE + 4) as *mut u8;
 const INPUT_DEV_TX_RX: *mut u8 = (INPUT_DEV_BASE + 4 * 2) as *mut u8;

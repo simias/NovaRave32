@@ -344,6 +344,6 @@ type SysResult<T> = Result<T, SysError>;
 const MTIME_HZ: u32 = 44_100 * 16;
 
 /// External Interrupt Controller: IRQ pending register
-const IRQ_PENDING: *mut usize = 0xffff_ffe0 as *mut usize;
+const IRQ_PENDING: *mut usize = 0xffff_fff0 as *mut usize;
 /// External Interrupt Controller: IRQ enabled register
-const IRQ_ENABLED: *mut usize = 0xffff_ffe4 as *mut usize;
+const IRQ_ENABLED: *mut usize = 0xffff_fff4 as *mut usize;

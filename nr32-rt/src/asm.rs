@@ -1,13 +1,5 @@
 use core::arch::global_asm;
 
-#[repr(u32)]
-#[derive(Clone, Copy, Debug)]
-#[allow(dead_code)]
-pub enum PrivilegeMode {
-    Kernel = 0,
-    User = 1,
-}
-
 // Entry point. This is the first thing executed by the CPU.
 global_asm!(
     ".section .init, \"ax\"
@@ -126,7 +118,8 @@ _trap_handler:
     mv      t0, sp
     mv      sp, s0
 
-    /* We only have to save callee-preserved registers + a0 (syscall result) and a1 (syscall return value)*/
+    /* We only have to save callee-preserved registers + a0 (syscall result) and a1 (syscall return
+     * value) */
     sw      gp,  (29 * 4)(sp)
     sw      tp,  (28 * 4)(sp)
     /* S0 banked above */

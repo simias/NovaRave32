@@ -3,7 +3,7 @@ MEMORY
     /* The first 128K of the ROM are reserved for the kernel */
     ROM (xr) : ORIGIN = 0x20000000 + 128K, LENGTH = 64M - 128K
     /* The first 32K of RAM are reserved for the kernel */
-    RAM (xrw) : ORIGIN = 0x40000000 + 32K, LENGTH = 2M
+    RAM (xrw) : ORIGIN = 0x00000000 + 32K, LENGTH = 2M - 32K
 }
 
 ENTRY(nr32_main);

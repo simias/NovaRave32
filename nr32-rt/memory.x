@@ -1,7 +1,10 @@
 MEMORY
 {
     ROM (xr) : ORIGIN = 0x20000100, LENGTH = 128K - 0x100
-    RAM (xrw) : ORIGIN = 0x40000000, LENGTH = 32K
+    /* I skip the top 4K both as a NULL pointer dereference protection and also
+     * because the top 2K can be addressed through $zero offsetting, so it could
+     * be used as some kind of scratchpad for high-performance code. */
+    RAM (xrw) : ORIGIN = 0x00000000 + 4K, LENGTH = 32K - 4K
 }
 
 PROVIDE(__stack_len = 2K);

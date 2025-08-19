@@ -334,7 +334,7 @@ fn nrad_upload(addr: u16, nrad_buf: &[u8]) {
     spu_upload(addr, &nrad_buf[8..]);
 }
 
-const SPU_BASE: u32 = 0x1002_0000;
+const SPU_BASE: u32 = 0x4002_0000;
 const SPU_VOLUME_MAIN: *mut u32 = SPU_BASE as *mut u32;
 const SPU_VOICE_ON: *mut u32 = (SPU_BASE + 4) as *mut u32;
 const SPU_RAM_ADDR: *mut u32 = (SPU_BASE + 4 * 4) as *mut u32;

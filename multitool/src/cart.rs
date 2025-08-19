@@ -236,7 +236,7 @@ const ROM: Range = Range {
 };
 
 const RAM: Range = Range {
-    base: 0x4000_0000,
+    base: 0x0000_0000,
     len: 2 * 1024 * 1024,
 };
 

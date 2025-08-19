@@ -41,4 +41,4 @@ impl Log for ConsoleLogger {
 
 pub static LOGGER: ConsoleLogger = ConsoleLogger;
 
-const DEBUG_OUT: *mut u8 = 0x1000_0010 as *mut u8;
+const DEBUG_OUT: *mut u8 = 0x4000_0010 as *mut u8;

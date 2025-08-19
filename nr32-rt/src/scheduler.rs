@@ -469,13 +469,13 @@ pub enum TaskType {
 const TASK_SLOT_ROUND_ROBBIN: u32 = MTIME_HZ / 120;
 
 /// MTIME[31:0]
-const MTIME_L: *mut usize = 0xffff_fff0 as *mut usize;
+const MTIME_L: *mut usize = 0xffff_ffe0 as *mut usize;
 /// MTIME[63:32]
-const MTIME_H: *mut usize = 0xffff_fff4 as *mut usize;
+const MTIME_H: *mut usize = 0xffff_ffe4 as *mut usize;
 /// MTIMECMP[31:0]
-const MTIMECMP_L: *mut usize = 0xffff_fff8 as *mut usize;
+const MTIMECMP_L: *mut usize = 0xffff_ffe8 as *mut usize;
 /// MTIMECMP[63:32]
-const MTIMECMP_H: *mut usize = 0xffff_fffc as *mut usize;
+const MTIMECMP_H: *mut usize = 0xffff_ffec as *mut usize;
 
 #[unsafe(link_section = ".text.fast")]
 fn mtime_get() -> u64 {
