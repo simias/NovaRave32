@@ -1,6 +1,6 @@
 /// Suspend task for [a1:a0] MTIME ticks
 ///
-/// Always returns SysError::TimeOut
+/// Always returns SysError::Timeout
 pub const SYS_SLEEP: usize = 0x01;
 
 /// Put task to sleep until VSYNC

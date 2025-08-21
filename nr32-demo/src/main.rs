@@ -177,13 +177,12 @@ pub extern "C" fn nr32_main() {
 /// bottom-right
 fn read_touch_screen() -> Option<(u16, u16)> {
     let cmd: &mut [u8] = &mut [
-        // Address touchscreen
-        b'T', // Read state
-        b'S', // x high
+        b'T', // Address touchscreen
+        b'S', // Read state
+        0,    // x high
         0,    // x low
         0,    // y high
         0,    // y low
-        0,
     ];
     input_device(0, cmd).unwrap();
 

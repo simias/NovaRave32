@@ -200,7 +200,7 @@ impl Scheduler {
             if let TaskState::Sleeping { until, .. } = t.state {
                 if now >= until {
                     t.state = TaskState::Running;
-                    t.set_banked_reg(Reg::A0, SysError::TimeOut as usize);
+                    t.set_banked_reg(Reg::A0, SysError::Timeout as usize);
                 }
             }
         }

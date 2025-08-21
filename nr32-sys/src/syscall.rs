@@ -25,7 +25,7 @@ pub fn sleep(duration: Duration) {
 
     let r = unsafe { syscall_2(SYS_SLEEP, ticks as usize, (ticks >> 32) as usize) };
 
-    assert_eq!(r, Err(SysError::TimeOut))
+    assert_eq!(r, Err(SysError::Timeout))
 }
 
 pub fn wait_for_vsync() {
@@ -298,7 +298,7 @@ pub enum SysError {
     /// Function not implemented
     NoSys = 6,
     /// Timeout
-    TimeOut = 7,
+    Timeout = 7,
 }
 
 type SysResult<T> = Result<T, SysError>;
@@ -314,7 +314,7 @@ fn check_syscall_return(result: usize, val: usize) -> SysResult<usize> {
         4 => Invalid,
         5 => TooLong,
         6 => NoSys,
-        7 => TimeOut,
+        7 => Timeout,
         e => {
             warn!("Unexpected syscall error: {e}");
             Invalid
@@ -326,7 +326,7 @@ fn check_syscall_return(result: usize, val: usize) -> SysResult<usize> {
 
 /// Suspend task for [a1:a0] MTIME ticks
 ///
-/// Always returns SysError::TimeOut
+/// Always returns SysError::Timeout
 pub const SYS_SLEEP: usize = 0x01;
 
 /// Put task to sleep until VSYNC

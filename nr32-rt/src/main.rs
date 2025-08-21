@@ -163,7 +163,7 @@ pub extern "C" fn handle_ecall(
 
             sched.sleep_current_task(!0, ticks);
             // Sleep always returns a timeout
-            Err(SysError::TimeOut)
+            Err(SysError::Timeout)
         }
         syscall::SYS_WAIT_FOR_VSYNC => {
             sched.current_task_set_state(scheduler::TaskState::WaitingForVSync);
@@ -335,7 +335,7 @@ enum SysError {
     /// Function not implemented
     NoSys = 6,
     /// Timeout
-    TimeOut = 7,
+    Timeout = 7,
 }
 
 type SysResult<T> = Result<T, SysError>;
