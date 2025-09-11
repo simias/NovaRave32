@@ -283,7 +283,7 @@ impl Iterator for MemBlockIter {
 
 /// Align `addr` to `alignment` (which should be a power of 2), rounding up
 const fn align_up(addr: usize, align: usize) -> usize {
-    (addr.wrapping_add(align - 1)) & !(align - 1)
+    align_down(addr.wrapping_add(align - 1), align)
 }
 
 /// Align `addr` to `alignment` (which should be a power of 2), rounding down
