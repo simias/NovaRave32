@@ -3,6 +3,7 @@ extern crate console_error_panic_hook;
 extern crate log;
 
 mod cpu;
+mod dma;
 mod fifo;
 mod gpu;
 mod input_dev;
@@ -34,6 +35,7 @@ pub struct NoRa32 {
     irq: irq::Controller,
     spu: spu::Spu,
     input_dev: input_dev::InputDev,
+    dma: dma::Dma,
     /// Buffer containing messages written to the debug console before they're flushed to stdout
     dbg_out: Vec<u8>,
     /// Sets to false if the emulator should shutdown
@@ -60,6 +62,7 @@ impl NoRa32 {
             irq: irq::Controller::new(),
             spu: spu::Spu::new(),
             input_dev: input_dev::InputDev::new(),
+            dma: dma::Dma::new(),
             dbg_out: Vec::new(),
             run: true,
             cycle_counter: 0,
@@ -153,6 +156,11 @@ impl NoRa32 {
         if let Some(off) = memmap::RAM.contains(addr) {
             self.cpu.ram_write(addr);
             self.ram[(off >> 2) as usize] = v;
+            return;
+        }
+
+        if let Some(off) = memmap::DMA.contains(addr) {
+            dma::store_word(self, off, v);
             return;
         }
 

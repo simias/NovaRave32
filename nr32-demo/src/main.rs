@@ -16,7 +16,7 @@ use nr32_sys::math::{
     matrix::{MAT0, MAT1, MAT2, MAT3, MAT4, MAT5, MAT7},
 };
 use nr32_sys::sync::{Fifo, Semaphore};
-use nr32_sys::syscall::{ThreadBuilder, input_device, sleep, wait_for_vsync};
+use nr32_sys::syscall::{DmaAddr, ThreadBuilder, do_dma, input_device, sleep, wait_for_vsync};
 
 #[global_allocator]
 static ALLOCATOR: allocator::Allocator = allocator::Allocator::new();
@@ -167,8 +167,18 @@ pub extern "C" fn nr32_main() {
         matrix::multiply(mvp_mat, p_mat, v_mat);
         matrix::multiply(mvp_mat, mvp_mat, m_mat);
 
-        send_model(ship);
-        send_model(beach);
+        do_dma(
+            DmaAddr::from_memory(ship.as_ptr() as usize).unwrap(),
+            DmaAddr::GPU,
+            ship.len() / 4,
+        )
+        .unwrap();
+        do_dma(
+            DmaAddr::from_memory(beach.as_ptr() as usize).unwrap(),
+            DmaAddr::GPU,
+            beach.len() / 4,
+        )
+        .unwrap();
 
         // End draw
         send_to_gpu(0x02 << 24);
@@ -279,13 +289,6 @@ fn start_audio(fs: Fs) {
         .unwrap();
 }
 
-fn send_model(model: &[u8]) {
-    for b in model.chunks_exact(4) {
-        let w = u32::from_le_bytes([b[0], b[1], b[2], b[3]]);
-        send_to_gpu(w);
-    }
-}
-
 fn spu_upload(addr: u16, d: &[u8]) {
     assert_eq!(addr & 3, 0, "SPU addr misaligned");
     unsafe {
@@ -294,7 +297,6 @@ fn spu_upload(addr: u16, d: &[u8]) {
 
     for b in d.chunks_exact(4) {
         let w = u32::from_le_bytes([b[0], b[1], b[2], b[3]]);
-        // info!("SPU W {:x}", w);
         unsafe {
             SPU_RAM_W.write_volatile(w);
         }

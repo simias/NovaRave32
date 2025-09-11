@@ -4,6 +4,7 @@ use core::arch::asm;
 use core::ptr::NonNull;
 use core::sync::atomic::AtomicUsize;
 use core::time::Duration;
+pub use nr32_common::syscall::DmaAddr;
 use nr32_common::syscall::*;
 
 /// Frequency of the MTIME timer tick
@@ -177,7 +178,19 @@ impl Default for ThreadBuilder {
     }
 }
 
-unsafe fn syscall_0(code: usize) -> SysResult<usize> {
+pub fn do_dma(source: DmaAddr, target: DmaAddr, len_words: usize) -> SysResult<()> {
+    unsafe {
+        syscall_3(
+            SYS_DO_DMA,
+            source.raw() as usize,
+            target.raw() as usize,
+            len_words,
+        )
+    }
+    .map(|_| ())
+}
+
+unsafe fn syscall_0(code: u32) -> SysResult<usize> {
     let mut arg0;
     let mut arg1;
 
@@ -193,7 +206,7 @@ unsafe fn syscall_0(code: usize) -> SysResult<usize> {
     check_syscall_return(arg0, arg1)
 }
 
-unsafe fn syscall_1(code: usize, mut arg0: usize) -> SysResult<usize> {
+unsafe fn syscall_1(code: u32, mut arg0: usize) -> SysResult<usize> {
     let mut arg1;
 
     unsafe {
@@ -208,7 +221,7 @@ unsafe fn syscall_1(code: usize, mut arg0: usize) -> SysResult<usize> {
     check_syscall_return(arg0, arg1)
 }
 
-unsafe fn syscall_2(code: usize, mut arg0: usize, mut arg1: usize) -> SysResult<usize> {
+unsafe fn syscall_2(code: u32, mut arg0: usize, mut arg1: usize) -> SysResult<usize> {
     unsafe {
         asm!("ecall",
             in("a7") code,
@@ -221,12 +234,7 @@ unsafe fn syscall_2(code: usize, mut arg0: usize, mut arg1: usize) -> SysResult<
     check_syscall_return(arg0, arg1)
 }
 
-unsafe fn syscall_3(
-    code: usize,
-    mut arg0: usize,
-    mut arg1: usize,
-    arg2: usize,
-) -> SysResult<usize> {
+unsafe fn syscall_3(code: u32, mut arg0: usize, mut arg1: usize, arg2: usize) -> SysResult<usize> {
     unsafe {
         asm!("ecall",
             in("a7") code,
@@ -241,7 +249,7 @@ unsafe fn syscall_3(
 }
 
 unsafe fn syscall_4(
-    code: usize,
+    code: u32,
     mut arg0: usize,
     mut arg1: usize,
     arg2: usize,
@@ -262,7 +270,7 @@ unsafe fn syscall_4(
 }
 
 unsafe fn syscall_5(
-    code: usize,
+    code: u32,
     mut arg0: usize,
     mut arg1: usize,
     arg2: usize,

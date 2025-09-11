@@ -1,4 +1,4 @@
-use crate::{CPU_FREQ, CycleCounter, NoRa32, fifo::Fifo, irq, sync};
+use crate::{CPU_FREQ, CycleCounter, NoRa32, dma::DmaResult, fifo::Fifo, irq, sync};
 use glam::Mat4;
 use std::fmt;
 
@@ -316,6 +316,15 @@ pub fn store_word(m: &mut NoRa32, addr: u32, v: u32) {
         m.gpu.command_fifo.push(v);
     } else {
         warn!("Unhandled GPU write at {:x}", addr);
+    }
+}
+
+pub fn dma_store(m: &mut NoRa32, v: u32) -> DmaResult {
+    if m.gpu.command_fifo.is_full() {
+        DmaResult::Stall(m.gpu.command_remaining)
+    } else {
+        m.gpu.command_fifo.push(v);
+        DmaResult::Ok
     }
 }
 
