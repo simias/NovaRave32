@@ -4,8 +4,8 @@ extern crate log;
 extern crate anyhow;
 
 mod audio;
-mod model;
 mod cart;
+mod model;
 mod utils;
 
 use anyhow::Result;
@@ -97,7 +97,7 @@ enum Commands {
         /// NR32 file to dump the resulting image
         #[arg(short, long)]
         output: Option<PathBuf>,
-    }
+    },
 }
 
 fn main() -> Result<()> {
@@ -183,7 +183,11 @@ fn main() -> Result<()> {
             cart.load_main(main_elf, stack_size)?;
 
             if let Some(out) = output {
-                info!("Dumping {} to {}", utils::format_size(cart.len() as _), out.display());
+                info!(
+                    "Dumping {} to {}",
+                    utils::format_size(cart.len() as _),
+                    out.display()
+                );
                 let mut out = BufWriter::new(File::create(out)?);
                 cart.dump(&mut out)?;
             }

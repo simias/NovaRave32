@@ -1,9 +1,9 @@
-use goblin::elf::Elf;
-use std::path::Path;
-use std::fs::File;
-use std::io::{Write, Read};
-use anyhow::{Context, Result};
 use crate::utils::format_size;
+use anyhow::{Context, Result};
+use goblin::elf::Elf;
+use std::fs::File;
+use std::io::{Read, Write};
+use std::path::Path;
 
 pub struct Cart {
     buf: Vec<u8>,
@@ -47,7 +47,8 @@ impl Cart {
 
                 debug!("Copying bootloader section {}: {:?}", pi, ph);
 
-                self.copy_data(data, ph.p_paddr).with_context(|| format!("Copying data from bootloader section {pi}"))?;
+                self.copy_data(data, ph.p_paddr)
+                    .with_context(|| format!("Copying data from bootloader section {pi}"))?;
             }
         }
 
@@ -71,9 +72,8 @@ impl Cart {
                     ram_max = mem_end as u32;
                 }
             }
-            if ph.p_type == goblin::elf::program_header::PT_LOAD  && ph.p_memsz > 0 {
+            if ph.p_type == goblin::elf::program_header::PT_LOAD && ph.p_memsz > 0 {
                 if ph.p_filesz > 0 {
-
                     let data = &elf_raw[ph.file_range()];
 
                     debug!("Copying main section {}: {:?}", pi, ph);
@@ -82,11 +82,15 @@ impl Cart {
                         bail!("Section {} file size differs from mem size?", pi);
                     }
 
-                    self.copy_data(data, ph.p_paddr).with_context(|| format!("Copying data from main section {pi}"))?;
+                    self.copy_data(data, ph.p_paddr)
+                        .with_context(|| format!("Copying data from main section {pi}"))?;
 
                     if ph.p_vaddr != ph.p_paddr {
                         is_range_in_ram(ph.p_vaddr, ph.p_memsz)?;
-                        self.add_op(*b"COPY", [ph.p_paddr as u32, ph.p_vaddr as u32, ph.p_filesz as u32])?;
+                        self.add_op(
+                            *b"COPY",
+                            [ph.p_paddr as u32, ph.p_vaddr as u32, ph.p_filesz as u32],
+                        )?;
                     }
                 } else {
                     // Size in memory but no size in file -> BSS
@@ -102,7 +106,8 @@ impl Cart {
         for sym in elf.syms.iter() {
             if let Some(name) = elf.strtab.get_at(sym.st_name) {
                 if name == "__global_pointer$" {
-                    is_addr_in_ram_or_rom(sym.st_value).with_context(|| format!("Loading GP value 0x{:x}", sym.st_value))?;
+                    is_addr_in_ram_or_rom(sym.st_value)
+                        .with_context(|| format!("Loading GP value 0x{:x}", sym.st_value))?;
                     gp = sym.st_value as u32;
                 }
             }
@@ -115,14 +120,24 @@ impl Cart {
         let heap_start = (ram_max + 0xf) & !0xf;
         let heap_size = (RAM.base + RAM.len) - heap_start;
 
-        info!("Free memory after static section alloc: {}", format_size(heap_size as _));
+        info!(
+            "Free memory after static section alloc: {}",
+            format_size(heap_size as _)
+        );
 
         if heap_size < stack_size {
-            bail!("Not enough memory left to allocate a stack of {}", format_size(stack_size as _));
+            bail!(
+                "Not enough memory left to allocate a stack of {}",
+                format_size(stack_size as _)
+            );
         }
 
         debug!("GP value is 0x{:x}", gp);
-        info!("Main heap allocated at 0x{:x} with a size of {}", heap_start, format_size(heap_size as _));
+        info!(
+            "Main heap allocated at 0x{:x} with a size of {}",
+            heap_start,
+            format_size(heap_size as _)
+        );
 
         self.add_op(*b"HEAP", [heap_start, heap_size, 0])?;
 
@@ -145,9 +160,16 @@ impl Cart {
             self.buf.resize(cart_end, 0xff);
         }
 
-        for (off, (t, f)) in self.buf[cart_start..cart_end].iter_mut().zip(data.iter()).enumerate() {
+        for (off, (t, f)) in self.buf[cart_start..cart_end]
+            .iter_mut()
+            .zip(data.iter())
+            .enumerate()
+        {
             if *t != 0xff {
-                bail!("Data conflict at ROM address 0x{:x}", ROM.base as usize + cart_start + off);
+                bail!(
+                    "Data conflict at ROM address 0x{:x}",
+                    ROM.base as usize + cart_start + off
+                );
             }
 
             *t = *f;
@@ -167,12 +189,11 @@ impl Cart {
 
         self.op_index += 1;
 
-        self.buf[off..(off+4)].clone_from_slice(&op);
-
+        self.buf[off..(off + 4)].clone_from_slice(&op);
 
         for p in params {
             off += 4;
-            self.buf[off..(off+4)].clone_from_slice(&p.to_le_bytes());
+            self.buf[off..(off + 4)].clone_from_slice(&p.to_le_bytes());
         }
 
         Ok(())
@@ -213,7 +234,6 @@ fn is_range_in_ram(start: u64, len: u64) -> Result<()> {
     is_addr_in_ram(start + len)
 }
 
-
 pub struct Range {
     base: u32,
     len: u32,
@@ -239,6 +259,5 @@ const RAM: Range = Range {
     base: 0x0000_0000,
     len: 2 * 1024 * 1024,
 };
-
 
 const CART_MAGIC: [u8; 8] = *b"NR32CRT0";

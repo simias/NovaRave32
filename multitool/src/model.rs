@@ -160,8 +160,10 @@ impl Model {
         let scale = match opts.scale {
             Some(s) => {
                 if s > scale_max {
-                    warn!("The scaling factor is too large and will probably cause clipping (safe max: {})",
-                        scale_max);
+                    warn!(
+                        "The scaling factor is too large and will probably cause clipping (safe max: {})",
+                        scale_max
+                    );
                 }
 
                 s
@@ -441,14 +443,21 @@ impl Model {
                     let c2 = bgr888(v2.col);
 
                     let needs_gouraud = c0 != c1 || c0 != c2;
-                    let mut has_normals = v0.normal().is_some() && v1.normal().is_some() && v2.normal().is_some();
+                    let mut has_normals =
+                        v0.normal().is_some() && v1.normal().is_some() && v2.normal().is_some();
 
                     if needs_gouraud && has_normals {
                         warn!("Triangle has both normal and gouraud data, dropping normals");
                         has_normals = false;
                     }
 
-                    let blend_mode = if needs_gouraud { 2 } else if has_normals { 4 } else { 0 };
+                    let blend_mode = if needs_gouraud {
+                        2
+                    } else if has_normals {
+                        4
+                    } else {
+                        0
+                    };
 
                     let p0 = scale_coords(v0.pos);
                     let p1 = scale_coords(v1.pos);
@@ -478,7 +487,7 @@ impl Model {
                         w.write_i16::<LittleEndian>(pos[1] as i16)
                     };
 
-                    let normal = |w: &mut W, v: &Vertex| -> Result<(), std::io::Error>{
+                    let normal = |w: &mut W, v: &Vertex| -> Result<(), std::io::Error> {
                         let n = v.normal().expect("Missing normal data");
 
                         // Make sure to normalize the data, just in case
@@ -488,13 +497,14 @@ impl Model {
                         w.write_i8(0)?;
 
                         for c in n {
-                            let cc = ((c / norm) * 0x7f as f32).round().clamp(-0x7f as f32, 0x7f as f32);
+                            let cc = ((c / norm) * 0x7f as f32)
+                                .round()
+                                .clamp(-0x7f as f32, 0x7f as f32);
                             w.write_i8(cc as i8)?;
                         }
 
                         Ok(())
                     };
-
 
                     let cmd = (0x40 << 24) | (blend_mode << 25) | c0;
                     wu32(w, cmd)?;

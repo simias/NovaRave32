@@ -7,14 +7,14 @@ use std::io::{Seek, SeekFrom, Write};
 use std::path::Path;
 use std::sync::Mutex;
 use std::sync::{
-    atomic::{AtomicBool, Ordering},
     Arc,
+    atomic::{AtomicBool, Ordering},
 };
 use std::thread;
 use std::time::Duration;
 use symphonia::core::audio::AudioBuffer as SAudioBuffer;
 use symphonia::core::audio::Signal;
-use symphonia::core::codecs::{DecoderOptions, CODEC_TYPE_NULL};
+use symphonia::core::codecs::{CODEC_TYPE_NULL, DecoderOptions};
 use symphonia::core::io::MediaSourceStream;
 use symphonia::default::get_probe;
 
@@ -321,7 +321,7 @@ impl AudioBuffer {
                                 for sample_out in frame.iter_mut() {
                                     *sample_out = 0;
                                 }
-                                continue
+                                continue;
                             }
                         }
                     }

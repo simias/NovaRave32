@@ -22,6 +22,7 @@ build:
 
 format:
     cargo fmt
+    cd multitool && cargo fmt
     cd nr32-demo && cargo fmt
     cd nr32-rt && cargo fmt
     cd nr32-sys && cargo fmt
@@ -29,6 +30,7 @@ format:
 
 lint:
     cargo clippy
+    cd multitool && cargo fmt
     cd nr32-demo && cargo clippy
     cd nr32-rt && cargo clippy
     cd nr32-sys && cargo clippy
