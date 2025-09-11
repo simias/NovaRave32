@@ -1,22 +1,11 @@
 /// Input device (touchscreen, pad, ...) handling
 use crate::lock::{Mutex, MutexGuard};
 use crate::{SysError, SysResult};
+use nr32_common::memmap;
 
 pub struct InputDev {
     /// If a transfer is ongoing, this is the target buffer for the RX data
     xfer_target: Option<&'static mut [u8]>,
-}
-
-static INPUT_DEV: Mutex<InputDev> = Mutex::new(InputDev { xfer_target: None });
-
-pub fn get() -> MutexGuard<'static, InputDev> {
-    // There should never be contention on the scheduler since we're running with IRQs disabled
-    match INPUT_DEV.try_lock() {
-        Some(lock) => lock,
-        None => {
-            panic!("Couldn't lock input_dev!")
-        }
-    }
 }
 
 impl InputDev {
@@ -57,8 +46,6 @@ impl InputDev {
 
         self.xfer_target = Some(data_in_out);
 
-        input_dev_enable_irq(true);
-
         Ok(())
     }
 
@@ -80,21 +67,20 @@ impl InputDev {
     }
 }
 
-fn input_dev_enable_irq(enable: bool) {
-    unsafe {
-        let mut irq = super::IRQ_PENDING.read_volatile();
-        if enable {
-            irq |= 1 << 1;
-        } else {
-            irq &= !(1 << 1);
-        }
+static INPUT_DEV: Mutex<InputDev> = Mutex::new(InputDev { xfer_target: None });
 
-        super::IRQ_PENDING.write_volatile(irq);
+pub fn get() -> MutexGuard<'static, InputDev> {
+    // There should never be contention on the scheduler since we're running with IRQs disabled
+    match INPUT_DEV.try_lock() {
+        Some(lock) => lock,
+        None => {
+            panic!("Couldn't lock input_dev!")
+        }
     }
 }
 
-const INPUT_DEV_BASE: usize = 0x4003_0000;
-const INPUT_DEV_CONF: *mut u32 = INPUT_DEV_BASE as *mut u32;
+const INPUT_DEV_BASE: usize = memmap::INPUT_DEV.base as usize;
+const INPUT_DEV_CONF: *mut usize = INPUT_DEV_BASE as *mut usize;
 const INPUT_DEV_PORT: *mut u8 = (INPUT_DEV_BASE + 4) as *mut u8;
 const INPUT_DEV_TX_RX: *mut u8 = (INPUT_DEV_BASE + 4 * 2) as *mut u8;
 

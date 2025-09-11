@@ -73,6 +73,16 @@ where
         Some(self.buffer[idx])
     }
 
+    pub fn front(&mut self) -> Option<T> {
+        if self.is_empty() {
+            return None;
+        }
+
+        let idx = (self.read_idx as usize) & (N - 1);
+
+        Some(self.buffer[idx])
+    }
+
     pub fn discard(&mut self, n: usize) {
         for _ in 0..n {
             self.pop();

@@ -46,6 +46,11 @@ pub const INPUT_DEV: Range = Range {
     len: 1024,
 };
 
+pub const DMA: Range = Range {
+    base: 0x4004_0000,
+    len: 1024,
+};
+
 pub const SYS_TIMER: Range = Range {
     base: 0xffff_ffe0,
     len: 16,

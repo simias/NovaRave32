@@ -10,6 +10,8 @@ pub enum Interrupt {
     VSync = 0,
     /// Triggered when the input device interface's IRQ line has a rising edge
     InputDev = 1,
+    /// Triggered when a DMA transfer is complete
+    DmaDone = 2,
 }
 
 pub struct Controller {

@@ -404,6 +404,7 @@ pub enum TaskState {
     },
     WaitingForVSync,
     WaitingForInputDev,
+    WaitingForDma,
 }
 
 /// Use MTIMECMP to schedule an interrupt

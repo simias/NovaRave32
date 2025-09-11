@@ -12,6 +12,7 @@ mod allocator;
 mod asm;
 mod bootscript;
 mod console;
+mod dma;
 mod input_dev;
 mod lock;
 mod scheduler;
@@ -19,6 +20,7 @@ mod utils;
 
 use core::fmt::Write;
 use core::sync::atomic::{AtomicUsize, Ordering::Acquire};
+use nr32_common::error::{SysError, SysResult};
 use nr32_common::syscall;
 
 // Linker symbols
@@ -74,13 +76,22 @@ fn handle_irqs() {
         sched.wake_up_state(scheduler::TaskState::WaitingForVSync);
     }
 
+    // Input dev
     if pending & (1 << 1) != 0 {
         let mut input_dev = input_dev::get();
-
         input_dev.xmit_done();
 
         let mut sched = scheduler::get();
         sched.wake_up_state(scheduler::TaskState::WaitingForInputDev);
+    }
+
+    // DMA
+    if pending & (1 << 2) != 0 {
+        let mut dma = dma::get();
+        dma.done();
+
+        let mut sched = scheduler::get();
+        sched.wake_up_state(scheduler::TaskState::WaitingForDma);
     }
 
     // ACK everything
@@ -156,7 +167,7 @@ pub extern "C" fn handle_ecall(
 
     let caller_task = sched.cur_task_id();
 
-    let result: SysResult<usize> = match sys_no {
+    let result: SysResult<usize> = match sys_no as u32 {
         // Can also be used for yielding with `ticks` set to 0
         syscall::SYS_SLEEP => {
             let ticks = (arg0 as u64) | ((arg1 as u64) << 32);
@@ -248,6 +259,18 @@ pub extern "C" fn handle_ecall(
 
             sched.futex_wake(futex_addr, nwakeup)
         }
+        syscall::SYS_DO_DMA => {
+            let src = arg0;
+            let dst = arg1;
+            let len_words = arg2;
+
+            let mut dma = dma::get();
+
+            dma.start(src, dst, len_words).map(|_| {
+                sched.current_task_set_state(scheduler::TaskState::WaitingForDma);
+                0
+            })
+        }
         _ => Err(SysError::NoSys),
     };
 
@@ -299,6 +322,8 @@ fn system_init() {
         irq_en |= 1;
         // Input dev IRQ
         irq_en |= 1 << 1;
+        // DMA IRQ
+        irq_en |= 1 << 2;
         IRQ_ENABLED.write_volatile(irq_en);
         riscv::register::mie::set_mext();
     }
@@ -319,26 +344,6 @@ mod panic_handler {
         shutdown(!0)
     }
 }
-
-#[derive(Copy, Clone, Debug, PartialEq, Eq)]
-enum SysError {
-    /// Device or resource is busy
-    Busy = 1,
-    /// Resource temporarily unavailable
-    Again = 2,
-    /// Cannot allocate memory
-    NoMem = 3,
-    /// Invalid argument
-    Invalid = 4,
-    /// Message is too long
-    TooLong = 5,
-    /// Function not implemented
-    NoSys = 6,
-    /// Timeout
-    Timeout = 7,
-}
-
-type SysResult<T> = Result<T, SysError>;
 
 /// Frequency of the MTIME timer tick
 const MTIME_HZ: u32 = 44_100 * 16;
