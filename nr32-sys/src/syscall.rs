@@ -300,9 +300,11 @@ pub enum SysError {
     NoSys = 6,
     /// Timeout
     Timeout = 7,
+    /// No such file or directory
+    NoEnt = 8,
 }
 
-type SysResult<T> = Result<T, SysError>;
+pub type SysResult<T> = Result<T, SysError>;
 
 fn check_syscall_return(result: usize, val: usize) -> SysResult<usize> {
     use SysError::*;

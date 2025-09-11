@@ -85,14 +85,20 @@ enum Commands {
     /// Build cartridge image
     Cart {
         /// Bootloader loaded at the start of the cartridge (ELF format)
+        #[arg(long)]
         boot_elf: PathBuf,
 
         /// Main program started by the bootloader (ELF format)
+        #[arg(long)]
         main_elf: PathBuf,
 
         /// Stack size for the main stack
         #[arg(long, default_value_t = 4096)]
         stack_size: u32,
+
+        /// Directory to include in the cart as the main filesystem
+        #[arg(long)]
+        fs: Option<PathBuf>,
 
         /// NR32 file to dump the resulting image
         #[arg(short, long)]
@@ -175,12 +181,17 @@ fn main() -> Result<()> {
             boot_elf,
             main_elf,
             stack_size,
+            fs,
             output,
         } => {
             let mut cart = cart::Cart::new();
 
             cart.load_bootloader(boot_elf)?;
             cart.load_main(main_elf, stack_size)?;
+
+            if let Some(fs) = fs {
+                cart.load_fs(fs)?;
+            }
 
             if let Some(out) = output {
                 info!(

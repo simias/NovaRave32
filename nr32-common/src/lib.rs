@@ -2,3 +2,4 @@
 
 pub mod syscall;
 pub mod memmap;
+pub mod bootscript;

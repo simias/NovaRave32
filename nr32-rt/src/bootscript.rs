@@ -1,27 +1,14 @@
 use crate::scheduler;
 use alloc::string::String;
 use core::slice;
+use nr32_common::bootscript;
 
 pub fn run_boot_script() {
-    let script = unsafe { slice::from_raw_parts(0x2000_0010 as *const u8, 0x100 - 0x10) };
+    for entry in bootscript::get() {
+        run_op(entry.code, entry.params);
 
-    for b in script.chunks_exact(16) {
-        let code = [b[0], b[1], b[2], b[3]];
-
-        let mut params = [0; 3];
-
-        if code == [0xff; 4] {
-            continue;
-        }
-
-        for (i, b) in b[4..16].chunks_exact(4).enumerate() {
-            params[i] = u32::from_le_bytes([b[0], b[1], b[2], b[3]]);
-        }
-
-        run_op(code, params);
-
-        // let s = String::from_utf8_lossy(&code);
-        // info!("Got op {} {:x?}", s, params);
+        // let s = String::from_utf8_lossy(&entry.code);
+        // info!("Got op {} {:x?}", s, entry.params);
     }
 }
 
@@ -75,7 +62,13 @@ fn run_op(code: [u8; 4], params: [u32; 3]) {
         }
         _ => {
             let desc = String::from_utf8_lossy(&code);
-            info!("Got unknown op {} {:x?}", desc, params);
+
+            if code[0] == b'%' {
+                // Reserved for userland usage
+                info!("Got user op {} {:x?}", desc, params);
+            } else {
+                warn!("Got unknown op {} {:x?}", desc, params);
+            }
         }
     }
 }

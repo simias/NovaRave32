@@ -1,9 +1,13 @@
 use crate::utils::format_size;
+use adler32::adler32;
 use anyhow::{Context, Result};
 use goblin::elf::Elf;
-use std::fs::File;
+use nr32_common::memmap::{RAM, ROM};
+use std::cmp::Ordering;
+use std::ffi::OsStr;
+use std::fs::{self, File};
 use std::io::{Read, Write};
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 pub struct Cart {
     buf: Vec<u8>,
@@ -198,6 +202,44 @@ impl Cart {
 
         Ok(())
     }
+
+    pub fn load_fs<P: AsRef<Path>>(&mut self, fs_path: P) -> Result<()> {
+        let root = FsEntry::from_path(fs_path)?;
+
+        let fs_start = align_up(self.buf.len(), 1024);
+        self.buf.resize(fs_start, 0xff);
+
+        info!("Dumping cart filesystem at offset {}", fs_start);
+
+        self.buf.extend_from_slice(b"NRFS");
+
+        // Length
+        self.buf.extend_from_slice(b"\0\0\0\0");
+        // Checksum
+        self.buf.extend_from_slice(b"\0\0\0\0");
+        // Reserved
+        self.buf.extend_from_slice(b"\0\0\0\0");
+
+        let top_header = self.buf.len();
+        root.dump(&mut self.buf, fs_start)?;
+
+        // Erase the next pointer for the top header
+        self.buf[top_header] &= 0xf;
+        self.buf[top_header + 1] = 0;
+        self.buf[top_header + 2] = 0;
+        self.buf[top_header + 3] = 0;
+
+        let fs = &mut self.buf[fs_start..];
+        let fs_len = (fs.len() - 16) as u32;
+
+        let csum = adler32(&fs[12..])?;
+        fs[4..8].copy_from_slice(&fs_len.to_le_bytes());
+        fs[8..12].copy_from_slice(&csum.to_le_bytes());
+
+        self.add_op(*b"%FSM", [fs_start as u32, fs_len + 16, 0])?;
+
+        Ok(())
+    }
 }
 
 fn is_addr_in_ram_or_rom(addr: u64) -> Result<()> {
@@ -234,30 +276,158 @@ fn is_range_in_ram(start: u64, len: u64) -> Result<()> {
     is_addr_in_ram(start + len)
 }
 
-pub struct Range {
-    base: u32,
-    len: u32,
+const CART_MAGIC: [u8; 8] = *b"NR32CRT0";
+
+#[derive(Debug)]
+struct FsEntry {
+    path: PathBuf,
+    payload: FsPayload,
 }
 
-impl Range {
-    /// Return `Some(offset)` if addr is contained in `self`
-    pub fn contains(self, addr: u32) -> Option<u32> {
-        if addr >= self.base && addr <= self.base + (self.len - 1) {
-            Some(addr - self.base)
+#[derive(Debug)]
+enum FsPayload {
+    File { size: u64 },
+    Directory { entries: Vec<FsEntry> },
+}
+
+impl FsEntry {
+    fn from_path<P: AsRef<Path>>(fs_path: P) -> Result<FsEntry> {
+        let path = fs_path.as_ref().to_path_buf();
+
+        let meta = path.metadata()?;
+
+        let payload = if meta.is_dir() {
+            let mut entries = fs::read_dir(fs_path)?
+                .map(|e| -> Result<FsEntry> {
+                    let e = e?;
+                    FsEntry::from_path(e.path())
+                })
+                .collect::<Result<Vec<FsEntry>>>()?;
+
+            // Put directories first, then files
+            entries.sort_by(|a, b| match a.is_file().cmp(&b.is_file()) {
+                Ordering::Equal => a.path.file_name().cmp(&b.path.file_name()),
+                c => c,
+            });
+
+            FsPayload::Directory { entries }
+        } else if meta.is_file() {
+            FsPayload::File { size: meta.len() }
         } else {
-            None
+            bail!(
+                "Found non-file, non-dir entry {}: {:?}",
+                path.display(),
+                meta
+            );
+        };
+
+        Ok(FsEntry { path, payload })
+    }
+
+    fn is_file(&self) -> bool {
+        matches!(self.payload, FsPayload::File { .. })
+    }
+
+    fn dump(&self, buf: &mut Vec<u8>, fs_start: usize) -> Result<()> {
+        let start = buf.len();
+
+        // Next header
+        buf.extend_from_slice(&[0; 4]);
+
+        let etype;
+
+        match self.payload {
+            FsPayload::File { size } => {
+                etype = 2;
+                // File length
+                buf.extend_from_slice(&(size as u32).to_le_bytes());
+
+                // CSUM
+                buf.extend_from_slice(&[0; 4]);
+
+                // PAD
+                buf.extend_from_slice(&[0; 4]);
+
+                self.write_filename(buf)?;
+
+                let mut f = File::open(&self.path)?;
+
+                let fstart = buf.len();
+                f.read_to_end(buf)?;
+
+                let flen = buf.len() - fstart;
+
+                if flen as u64 != size {
+                    bail!("File {} changed while dumping!", self.path.display());
+                }
+
+                let csum = adler32(&buf[fstart..])?;
+                buf[(start + 8)..(start + 12)].copy_from_slice(&csum.to_le_bytes());
+            }
+            FsPayload::Directory { ref entries } => {
+                etype = 1;
+
+                // Number of entries
+                buf.extend_from_slice(&(entries.len() as u32).to_le_bytes());
+                // PAD
+                buf.extend_from_slice(&[0; 8]);
+
+                self.write_filename(buf)?;
+
+                let mut last_header = 0;
+
+                for e in entries {
+                    last_header = buf.len();
+
+                    e.dump(buf, fs_start)?;
+                }
+
+                if last_header != 0 {
+                    // Erase the next pointer for the last header
+                    buf[last_header] &= 0xf;
+                    buf[last_header + 1] = 0;
+                    buf[last_header + 2] = 0;
+                    buf[last_header + 3] = 0;
+                }
+            }
         }
+
+        let next_start = align_up(buf.len(), 16);
+
+        buf.resize(next_start, 0);
+
+        let nt = ((next_start - fs_start) as u32) | etype;
+
+        buf[start..(start + 4)].copy_from_slice(&nt.to_le_bytes());
+
+        Ok(())
+    }
+
+    fn write_filename(&self, buf: &mut Vec<u8>) -> Result<()> {
+        let fname = self.path.file_name().unwrap_or_else(|| OsStr::new(""));
+
+        let bytes = fname.as_encoded_bytes();
+
+        if bytes.len() > 16 {
+            bail!("File name is longer than 16 chars: {}", self.path.display());
+        }
+
+        buf.extend_from_slice(bytes);
+
+        for _ in bytes.len()..16 {
+            buf.push(0);
+        }
+
+        Ok(())
     }
 }
 
-const ROM: Range = Range {
-    base: 0x2000_0000,
-    len: 64 * 1024 * 1024,
-};
+/// Align `addr` to `alignment` (which should be a power of 2), rounding up
+const fn align_up(addr: usize, align: usize) -> usize {
+    align_down(addr.wrapping_add(align - 1), align)
+}
 
-const RAM: Range = Range {
-    base: 0x0000_0000,
-    len: 2 * 1024 * 1024,
-};
-
-const CART_MAGIC: [u8; 8] = *b"NR32CRT0";
+/// Align `addr` to `alignment` (which should be a power of 2), rounding down
+const fn align_down(addr: usize, align: usize) -> usize {
+    addr & !(align - 1)
+}

@@ -13,9 +13,9 @@ mod systimer;
 
 use cfg_if::cfg_if;
 use js_sys::{Array, Function};
+use nr32_common::memmap;
 use std::panic;
 use wasm_bindgen::prelude::*;
-use nr32_common::memmap;
 
 #[wasm_bindgen(start)]
 fn main() {

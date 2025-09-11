@@ -4,6 +4,7 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
+adler32 = "1.2"
 anyhow = "1.0.96"
 byteorder = "1.5.0"
 clap = { version = "4.5.31", features = ["derive"] }
@@ -13,5 +14,6 @@ gltf = "1.4.1"
 goblin = "0.10"
 humansize = "2"
 log = "0.4.26"
+nr32-common = { path = "../nr32-common" }
 rubato = "0.16.1"
 symphonia = { version = "0.5.4", features = ["wav", "flac", "ogg", "mp3"] }

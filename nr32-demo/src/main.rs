@@ -9,6 +9,7 @@ use core::time::Duration;
 
 use alloc::sync::Arc;
 use nr32_sys::allocator;
+use nr32_sys::fs::Fs;
 use nr32_sys::gpu::send_to_gpu;
 use nr32_sys::math::{
     Angle, Fp32, matrix,
@@ -43,6 +44,10 @@ pub extern "C" fn nr32_main() {
     log::set_max_level(log::LevelFilter::Trace);
 
     info!("Task is running!");
+
+    let fs = Fs::from_bootscript().unwrap();
+
+    info!("Loaded FS: {}", fs.fsck().unwrap());
 
     let fifo: Arc<Fifo<DmaOp, 8>> = Arc::new(Fifo::new());
 
@@ -99,8 +104,8 @@ pub extern "C" fn nr32_main() {
     let mut angle_x = Angle::from_degrees(0.into());
     let a_increment = Angle::from_degrees((0.5).into());
 
-    let ship = include_bytes!("assets/ship.nr3d");
-    let beach = include_bytes!("assets/beach.nr3d");
+    let ship = include_bytes!("assets/models/ship.nr3d");
+    let beach = include_bytes!("assets/models/beach.nr3d");
 
     let mut prev_touch: Option<(u16, u16)> = None;
 
@@ -208,7 +213,7 @@ fn read_touch_screen() -> Option<(u16, u16)> {
 const SEMITONE_RATIO: Fp32 = Fp32::from_f32(1.0594631);
 
 fn start_audio() {
-    let note = include_bytes!("assets/A440.nrad");
+    let note = include_bytes!("assets/audio/A440.nrad");
 
     let a_step = nrad_step(note) as i32;
 

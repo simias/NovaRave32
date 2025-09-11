@@ -269,7 +269,7 @@ fn handle_new_command(m: &mut NoRa32, cmd: u32) -> CommandState {
                     // Invalidate the LUT entry
                     m.gpu.matrix_lut[mindex] = None;
 
-                    m.gpu.command_remaining += CPU_FREQ / 100_000;
+                    m.gpu.command_remaining += 64;
 
                     CommandState::Idle
                 }
@@ -328,6 +328,7 @@ pub fn run(m: &mut NoRa32) {
     while m.gpu.command_remaining <= 0
         && let Some(cmd) = m.gpu.command_fifo.pop()
     {
+        m.gpu.command_remaining += 1;
         handle_command(m, cmd);
     }
 
