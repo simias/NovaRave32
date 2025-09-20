@@ -2,9 +2,11 @@ wasm_out := "nr32-web/src/wasm"
 
 build-wasm:
     wasm-pack build --target web --out-dir {{wasm_out}}
+    mkdir -p nr32-web/public/
     cp {{wasm_out}}/novarave32_bg.wasm nr32-web/public/
 
 build-rom $RUSTFLAGS="-C link-arg=-Tmemory.x -C target-feature=+relax":
+    mkdir -p nr32-web/public/
     cd nr32-rt && cargo build --release && cargo objdump --release -- -d -x -s -r > ../nr32-web/public/nr32-rt.txt
     cd nr32-demo && cargo build --release && cargo objdump --release -- -d -x -s -r > ../nr32-web/public/demo.txt
 

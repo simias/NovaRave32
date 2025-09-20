@@ -66,9 +66,14 @@ dependencies = [
  "glam",
  "js-sys",
  "log",
+ "nr32-common",
  "static_assertions",
  "wasm-bindgen",
 ]
+
+[[package]]
+name = "nr32-common"
+version = "0.1.0"
 
 [[package]]
 name = "once_cell"

@@ -2,9 +2,10 @@
 
 mod decoder;
 
-use crate::{CycleCounter, NoRa32, RAM, ROM, sync};
+use crate::{CycleCounter, NoRa32, sync};
 use decoder::{Decoder, Instruction};
 use std::fmt;
+use nr32_common::memmap::{RAM, ROM};
 
 pub struct Cpu {
     /// Instruction decoder

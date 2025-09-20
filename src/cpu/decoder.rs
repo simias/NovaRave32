@@ -1,7 +1,8 @@
 //! RISC-V instruc//tion decoding and caching
 
 use super::{Extendable, Reg};
-use crate::{NoRa32, RAM, ROM};
+use crate::NoRa32;
+use nr32_common::memmap::{RAM, ROM};
 
 /// Number of bytes per instruction page as a power of two
 const PAGE_LEN_SHIFT: usize = 12;

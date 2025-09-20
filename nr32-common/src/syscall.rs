@@ -11,7 +11,7 @@ pub const SYS_WAIT_FOR_VSYNC: usize = 0x02;
 /// - a0: thread entry point
 /// - a1: thread data
 /// - a2: priority
-/// - a3: stack size
+/// - a3: stack pointer
 /// - a4: global pointer
 pub const SYS_SPAWN_TASK: usize = 0x03;
 
@@ -47,7 +47,7 @@ pub const SYS_DBG_PUTS: usize = 0x08;
 
 /// Shutdown the emulator
 ///
-/// - a0: return value
+/// - a0: exit code (truncated to 16bits)
 pub const SYS_SHUTDOWN: usize = 0x09;
 
 /// Futex wait

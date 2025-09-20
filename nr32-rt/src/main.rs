@@ -15,11 +15,11 @@ mod console;
 mod input_dev;
 mod lock;
 mod scheduler;
-mod syscall;
 mod utils;
 
 use core::fmt::Write;
 use core::sync::atomic::{AtomicUsize, Ordering::Acquire};
+use nr32_common::syscall;
 
 // Linker symbols
 unsafe extern "C" {

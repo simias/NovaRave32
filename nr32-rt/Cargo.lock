@@ -21,10 +21,15 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "04cbf5b083de1c7e0222a7a51dbfdba1cbe1c6ab0b15e29fff3f6c077fd9cd9f"
 
 [[package]]
+name = "nr32-common"
+version = "0.1.0"
+
+[[package]]
 name = "nr32-rt"
 version = "0.1.0"
 dependencies = [
  "log",
+ "nr32-common",
  "riscv",
 ]
 

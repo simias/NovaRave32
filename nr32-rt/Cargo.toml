@@ -5,6 +5,7 @@ edition = "2024"
 
 [dependencies]
 log = "0.4"
+nr32-common = { path = "../nr32-common" }
 
 [dependencies.riscv]
 version = "0.12"

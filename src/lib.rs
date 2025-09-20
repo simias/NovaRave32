@@ -15,6 +15,7 @@ use cfg_if::cfg_if;
 use js_sys::{Array, Function};
 use std::panic;
 use wasm_bindgen::prelude::*;
+use nr32_common::memmap;
 
 #[wasm_bindgen(start)]
 fn main() {
@@ -27,7 +28,7 @@ pub struct NoRa32 {
     cpu: cpu::Cpu,
     sync: sync::Synchronizer,
     rom: Vec<u32>,
-    ram: Box<[u32; (RAM.len >> 2) as _]>,
+    ram: Box<[u32; (memmap::RAM.len >> 2) as _]>,
     gpu: gpu::Gpu,
     systimer: systimer::Timer,
     irq: irq::Controller,
@@ -53,7 +54,7 @@ impl NoRa32 {
             cpu: cpu::Cpu::new(),
             sync: sync::Synchronizer::new(),
             rom: Vec::new(),
-            ram: Box::new([0; (RAM.len >> 2) as usize]),
+            ram: Box::new([0; (memmap::RAM.len >> 2) as usize]),
             gpu: gpu::Gpu::new(),
             systimer: systimer::Timer::new(),
             irq: irq::Controller::new(),
@@ -149,35 +150,35 @@ impl NoRa32 {
     fn store_word(&mut self, addr: u32, v: u32) {
         debug_assert!(addr & 3 == 0);
 
-        if let Some(off) = RAM.contains(addr) {
+        if let Some(off) = memmap::RAM.contains(addr) {
             self.cpu.ram_write(addr);
             self.ram[(off >> 2) as usize] = v;
             return;
         }
 
-        if let Some(off) = GPU.contains(addr) {
+        if let Some(off) = memmap::GPU.contains(addr) {
             gpu::store_word(self, off, v);
             return;
         }
 
-        if let Some(off) = SPU.contains(addr) {
+        if let Some(off) = memmap::SPU.contains(addr) {
             spu::store_word(self, off, v);
             return;
         }
 
-        if let Some(off) = SYS_TIMER.contains(addr) {
+        if let Some(off) = memmap::SYS_TIMER.contains(addr) {
             return systimer::store_word(self, off, v);
         }
 
-        if let Some(off) = IRQ_CONTROLLER.contains(addr) {
+        if let Some(off) = memmap::IRQ_CONTROLLER.contains(addr) {
             return irq::store_word(self, off, v);
         }
 
-        if let Some(off) = INPUT_DEV.contains(addr) {
+        if let Some(off) = memmap::INPUT_DEV.contains(addr) {
             return input_dev::store_word(self, off, v);
         }
 
-        if let Some(off) = DEBUG.contains(addr) {
+        if let Some(off) = memmap::DEBUG.contains(addr) {
             if off == 0x20 {
                 // Shutdown
                 if v >> 16 == 0xd1e {
@@ -195,7 +196,7 @@ impl NoRa32 {
     fn store_halfword(&mut self, addr: u32, v: u16) {
         debug_assert!(addr & 1 == 0);
 
-        if let Some(off) = RAM.contains(addr) {
+        if let Some(off) = memmap::RAM.contains(addr) {
             self.cpu.ram_write(addr);
             let wo = (off >> 2) as usize;
             let bitpos = (off & 2) << 3;
@@ -212,7 +213,7 @@ impl NoRa32 {
 
     /// Store byte `v` at `addr`.
     fn store_byte(&mut self, addr: u32, v: u8) {
-        if let Some(off) = RAM.contains(addr) {
+        if let Some(off) = memmap::RAM.contains(addr) {
             self.cpu.ram_write(addr);
             let wo = (off >> 2) as usize;
             let bitpos = (off & 3) << 3;
@@ -224,11 +225,11 @@ impl NoRa32 {
             return;
         }
 
-        if let Some(off) = INPUT_DEV.contains(addr) {
+        if let Some(off) = memmap::INPUT_DEV.contains(addr) {
             return input_dev::store_word(self, off, u32::from(v));
         }
 
-        if let Some(off) = DEBUG.contains(addr) {
+        if let Some(off) = memmap::DEBUG.contains(addr) {
             if off == 0x10 {
                 // Debug console
                 if v == b'\n' {
@@ -253,25 +254,25 @@ impl NoRa32 {
 
         self.tick(1);
 
-        if let Some(off) = RAM.contains(addr) {
+        if let Some(off) = memmap::RAM.contains(addr) {
             return self.ram[(off >> 2) as usize];
         }
 
-        if let Some(off) = ROM.contains(addr) {
+        if let Some(off) = memmap::ROM.contains(addr) {
             self.tick(20);
 
             return self.rom.get((off >> 2) as usize).cloned().unwrap_or(!0);
         }
 
-        if let Some(off) = SYS_TIMER.contains(addr) {
+        if let Some(off) = memmap::SYS_TIMER.contains(addr) {
             return systimer::load_word(self, off);
         }
 
-        if let Some(off) = IRQ_CONTROLLER.contains(addr) {
+        if let Some(off) = memmap::IRQ_CONTROLLER.contains(addr) {
             return irq::load_word(self, off);
         }
 
-        if let Some(off) = GPU.contains(addr) {
+        if let Some(off) = memmap::GPU.contains(addr) {
             return gpu::load_word(self, off);
         }
 
@@ -282,18 +283,18 @@ impl NoRa32 {
     fn load_byte(&mut self, addr: u32) -> u8 {
         self.tick(1);
 
-        if let Some(off) = RAM.contains(addr) {
+        if let Some(off) = memmap::RAM.contains(addr) {
             let word = self.ram[(off >> 2) as usize];
             return (word >> ((off & 3) << 3)) as u8;
         }
 
-        if let Some(off) = ROM.contains(addr) {
+        if let Some(off) = memmap::ROM.contains(addr) {
             self.tick(20);
             let word = self.rom.get((off >> 2) as usize).cloned().unwrap_or(!0);
             return (word >> ((off & 3) << 3)) as u8;
         }
 
-        if let Some(off) = INPUT_DEV.contains(addr) {
+        if let Some(off) = memmap::INPUT_DEV.contains(addr) {
             return input_dev::load_word(self, off) as u8;
         }
 
@@ -304,12 +305,12 @@ impl NoRa32 {
     fn load_halfword(&mut self, addr: u32) -> u16 {
         self.tick(1);
 
-        if let Some(off) = RAM.contains(addr) {
+        if let Some(off) = memmap::RAM.contains(addr) {
             let word = self.ram[(off >> 2) as usize];
             return (word >> ((off & 2) << 3)) as u16;
         }
 
-        if let Some(off) = ROM.contains(addr) {
+        if let Some(off) = memmap::ROM.contains(addr) {
             self.tick(20);
             let word = self.rom.get((off >> 2) as usize).cloned().unwrap_or(!0);
             return (word >> ((off & 2) << 3)) as u16;
@@ -383,22 +384,6 @@ impl Callbacks {
     }
 }
 
-pub struct Range {
-    base: u32,
-    len: u32,
-}
-
-impl Range {
-    /// Return `Some(offset)` if addr is contained in `self`
-    pub fn contains(self, addr: u32) -> Option<u32> {
-        if addr >= self.base && addr <= self.base + (self.len - 1) {
-            Some(addr - self.base)
-        } else {
-            None
-        }
-    }
-}
-
 cfg_if! {
     if #[cfg(feature = "console_log")] {
         fn init_log() {
@@ -409,46 +394,6 @@ cfg_if! {
         fn init_log() {}
     }
 }
-
-const RAM: Range = Range {
-    base: 0x0000_0000,
-    len: 2 * 1024 * 1024,
-};
-
-const ROM: Range = Range {
-    base: 0x2000_0000,
-    len: 64 * 1024 * 1024,
-};
-
-const DEBUG: Range = Range {
-    base: 0x4000_0000,
-    len: 1024,
-};
-
-const GPU: Range = Range {
-    base: 0x4001_0000,
-    len: 1024,
-};
-
-const SPU: Range = Range {
-    base: 0x4002_0000,
-    len: 1024,
-};
-
-const INPUT_DEV: Range = Range {
-    base: 0x4003_0000,
-    len: 1024,
-};
-
-const SYS_TIMER: Range = Range {
-    base: 0xffff_ffe0,
-    len: 16,
-};
-
-const IRQ_CONTROLLER: Range = Range {
-    base: 0xffff_fff0,
-    len: 8,
-};
 
 type CycleCounter = i32;
 
