@@ -1,9 +1,9 @@
+INCLUDE ../nr32-common/common.ld
+
 MEMORY
 {
-    /* The first 128K of the ROM are reserved for the kernel */
-    ROM (xr) : ORIGIN = 0x20000000 + 128K, LENGTH = 64M - 128K
-    /* The first 32K of RAM are reserved for the kernel */
-    RAM (xrw) : ORIGIN = 0x00000000 + 32K, LENGTH = 2M - 32K
+    ROM (xr) : ORIGIN = __nr32_rom_base + __nr32_sys_rom_len, LENGTH = __nr32_rom_len - __nr32_sys_rom_len
+    RAM (xrw) : ORIGIN = __nr32_ram_base + __nr32_sys_ram_len, LENGTH = __nr32_ram_len - __nr32_sys_ram_len
 }
 
 ENTRY(nr32_main);

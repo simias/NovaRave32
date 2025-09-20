@@ -1,10 +1,12 @@
+INCLUDE ../nr32-common/common.ld
+
 MEMORY
 {
-    ROM (xr) : ORIGIN = 0x20000100, LENGTH = 128K - 0x100
+    ROM (xr) : ORIGIN = __nr32_rom_base + 0x100, LENGTH = __nr32_sys_rom_len - 0x100
     /* I skip the top 4K both as a NULL pointer dereference protection and also
      * because the top 2K can be addressed through $zero offsetting, so it could
      * be used as some kind of scratchpad for high-performance code. */
-    RAM (xrw) : ORIGIN = 0x00000000 + 4K, LENGTH = 32K - 4K
+    RAM (xrw) : ORIGIN = __nr32_ram_base + 4K, LENGTH = __nr32_sys_ram_len - 4K
 }
 
 PROVIDE(__stack_len = 2K);
