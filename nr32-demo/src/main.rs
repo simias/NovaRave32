@@ -67,7 +67,7 @@ pub extern "C" fn nr32_main() {
         })
         .unwrap();
 
-    start_audio();
+    start_audio(fs);
 
     info!("Audio started");
 
@@ -104,8 +104,8 @@ pub extern "C" fn nr32_main() {
     let mut angle_x = Angle::from_degrees(0.into());
     let a_increment = Angle::from_degrees((0.5).into());
 
-    let ship = include_bytes!("assets/models/ship.nr3d");
-    let beach = include_bytes!("assets/models/beach.nr3d");
+    let ship = fs.contents(&[b"assets", b"models", b"ship.nr3d"]).unwrap();
+    let beach = fs.contents(&[b"assets", b"models", b"beach.nr3d"]).unwrap();
 
     let mut prev_touch: Option<(u16, u16)> = None;
 
@@ -212,8 +212,14 @@ fn read_touch_screen() -> Option<(u16, u16)> {
 /// 12th root of 2
 const SEMITONE_RATIO: Fp32 = Fp32::from_f32(1.0594631);
 
-fn start_audio() {
-    let note = include_bytes!("assets/audio/A440.nrad");
+fn start_audio(fs: Fs) {
+    let note = fs.contents(&[b"assets", b"audio", b"A440.nrad"]).unwrap();
+
+    info!(
+        "Note: {}B {}",
+        note.len(),
+        note.iter().fold(0u32, |acc, &b| acc + b as u32)
+    );
 
     let a_step = nrad_step(note) as i32;
 
@@ -283,13 +289,14 @@ fn send_model(model: &[u8]) {
 fn spu_upload(addr: u16, d: &[u8]) {
     assert_eq!(addr & 3, 0, "SPU addr misaligned");
     unsafe {
-        *SPU_RAM_ADDR = addr as u32;
+        SPU_RAM_ADDR.write_volatile(addr as u32);
     }
 
     for b in d.chunks_exact(4) {
         let w = u32::from_le_bytes([b[0], b[1], b[2], b[3]]);
+        // info!("SPU W {:x}", w);
         unsafe {
-            *SPU_RAM_W = w;
+            SPU_RAM_W.write_volatile(w);
         }
     }
 }
@@ -298,7 +305,7 @@ fn spu_main_volume(vleft: i16, vright: i16) {
     let v = ((vleft as u32) << 16) | (vright as u32);
 
     unsafe {
-        *SPU_VOLUME_MAIN = v;
+        SPU_VOLUME_MAIN.write_volatile(v);
     }
 }
 
@@ -307,7 +314,7 @@ fn spu_voice_volume(voice: u32, vleft: i16, vright: i16) {
     let p = (SPU_VOICE_VOLUME + voice * SPU_VOICE_OFF) as *mut u32;
 
     unsafe {
-        *p = v;
+        p.write_volatile(v);
     }
 }
 
@@ -315,7 +322,7 @@ fn spu_voice_step(voice: u32, step: u16) {
     let p = (SPU_VOICE_STEP + voice * SPU_VOICE_OFF) as *mut u32;
 
     unsafe {
-        *p = step as u32;
+        p.write_volatile(step as u32);
     }
 }
 
@@ -323,7 +330,7 @@ fn spu_voice_start_block(voice: u32, addr: u32) {
     let p = (SPU_VOICE_START_BLOCK + voice * SPU_VOICE_OFF) as *mut u32;
 
     unsafe {
-        *p = addr;
+        p.write_volatile(addr);
     }
 }
 

@@ -8,6 +8,7 @@ use core::str;
 use nr32_common::bootscript;
 use nr32_common::memmap::ROM;
 
+#[derive(Copy, Clone)]
 pub struct Fs {
     mem: &'static [u8],
 }
@@ -145,6 +146,35 @@ impl Fs {
         }
 
         Ok(FsEntry { pos, mem: self.mem })
+    }
+
+    pub fn entry(&self, mut path: &[&[u8]]) -> SysResult<FsEntry> {
+        if path.is_empty() {
+            return Err(SysError::NoEnt);
+        }
+
+        let e = self.visit(|e| {
+            if e.name() == path[0] {
+                path = &path[1..];
+
+                if path.is_empty() {
+                    Ok(FsVisitRet::End)
+                } else {
+                    Ok(FsVisitRet::Recurse)
+                }
+            } else {
+                Ok(FsVisitRet::Ignore)
+            }
+        })?;
+
+        match e {
+            Some(e) => Ok(e),
+            None => Err(SysError::NoEnt),
+        }
+    }
+
+    pub fn contents(&self, path: &[&[u8]]) -> SysResult<&'static [u8]> {
+        self.entry(path)?.contents()
     }
 }
 
