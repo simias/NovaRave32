@@ -5,6 +5,7 @@ mod decoder;
 use crate::{CycleCounter, NoRa32, sync};
 use decoder::{Decoder, Instruction};
 use nr32_common::memmap::{RAM, ROM};
+use nr32_common::syscall::DmaTarget;
 use std::fmt;
 
 pub struct Cpu {
@@ -719,6 +720,8 @@ pub fn step(m: &mut NoRa32) {
             } else {
                 panic!("Misaligned store {:x} {:?}", addr, m.cpu);
             }
+
+            check_dma_reservation(m);
         }
         Instruction::Scw { rd, rs1, rs2 } => {
             // Invalidate any previous reservation:
@@ -864,6 +867,26 @@ pub fn step(m: &mut NoRa32) {
         ),
         Instruction::Invalid16(op) => {
             panic!("Encountered invalid instruction {:x} {:?}", op, m.cpu)
+        }
+    }
+}
+
+/// Invalidate the reservation if it overlaps with the DMA
+pub fn check_dma_reservation(m: &mut NoRa32) {
+    if let Some(r) = m.cpu.reservation {
+        if !m.dma.is_running() {
+            return;
+        }
+
+        let dma_dst = m.dma.dst();
+        if let Ok(DmaTarget::Memory) = dma_dst.target() {
+            let start = dma_dst.raw();
+            let len = m.dma.rem_words() * 4;
+
+            if r >= start && r < start + len {
+                // Invalidate
+                m.cpu.reservation = None;
+            }
         }
     }
 }

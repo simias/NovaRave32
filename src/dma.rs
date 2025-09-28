@@ -1,6 +1,6 @@
 use crate::fifo::Fifo;
 use crate::irq;
-use crate::{CPU_FREQ, CycleCounter, NoRa32, gpu, sync};
+use crate::{CPU_FREQ, CycleCounter, NoRa32, cpu, gpu, sync};
 use nr32_common::memmap::{RAM, ROM};
 use nr32_common::syscall::{DmaAddr, DmaTarget};
 
@@ -24,6 +24,14 @@ impl Dma {
             rem_words: 0,
             buf: Fifo::new(),
         }
+    }
+
+    pub fn dst(&self) -> DmaAddr {
+        self.dst
+    }
+
+    pub fn rem_words(&self) -> u32 {
+        self.rem_words
     }
 
     pub fn is_running(&self) -> bool {
@@ -162,7 +170,14 @@ pub fn store_word(m: &mut NoRa32, addr: u32, val: u32) {
             m.dma.rem_words = val;
             m.dma.buf.clear();
 
-            let n_e = if val == 0 { CPU_FREQ } else { 32 };
+            let n_e = if val == 0 {
+                // Idle
+                CPU_FREQ
+            } else {
+                // Start
+                cpu::check_dma_reservation(m);
+                32
+            };
 
             sync::next_event(m, DMASYNC, n_e);
         }
