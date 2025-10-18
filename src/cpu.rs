@@ -10,7 +10,7 @@ use std::fmt;
 
 pub struct Cpu {
     /// Instruction decoder
-    decoder: Decoder,
+    pub decoder: Decoder,
     /// Program Counter
     pc: u32,
     /// 32 general purpose registers (x0 must always be 0). The additional register at the end is

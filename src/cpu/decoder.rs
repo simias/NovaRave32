@@ -1,7 +1,8 @@
-//! RISC-V instruc//tion decoding and caching
+//! RISC-V instruction decoding and caching
 
 use super::{Extendable, Reg};
 use crate::NoRa32;
+use crate::simple_rand::SimpleRand;
 use nr32_common::memmap::{RAM, ROM};
 
 /// Number of bytes per instruction page as a power of two
@@ -15,7 +16,7 @@ const PAGE_LEN_BYTES: usize = 1 << PAGE_LEN_SHIFT;
 const PAGE_LEN_OP: usize = PAGE_LEN_BYTES >> 1;
 
 /// Max number of decoded pages before we start recycling
-const PAGE_CACHE_MAX: usize = 512;
+const PAGE_CACHE_MAX: usize = 64;
 
 /// Total number of possible pages on the system. Since we can only run code from ROM or RAM, we
 /// don't have to look further.
@@ -26,6 +27,7 @@ pub struct Decoder {
     page_lut: Vec<Option<u16>>,
     /// Last used page base and its corresponding index
     last_used_page: (u32, u16),
+    rand: SimpleRand,
 }
 
 impl Decoder {
@@ -43,6 +45,7 @@ impl Decoder {
             pages: Vec::new(),
             page_lut: vec![None; PAGE_TOTAL],
             last_used_page: (!0, 0),
+            rand: SimpleRand::new(),
         }
     }
 
@@ -52,11 +55,44 @@ impl Decoder {
         self.page_lut.fill(None);
         self.last_used_page = (!0, 0);
     }
+
+    pub fn expire_pages(&mut self) {
+        for p in self.pages.iter_mut() {
+            p.hit_score >>= 1;
+        }
+    }
+
+    /// Eject the least-used page and return its index for reuse
+    pub fn evict_page(&mut self) -> usize {
+        // Recycle the page with the lowest hit score
+        let ip = self
+            .pages
+            .iter()
+            .enumerate()
+            .min_by_key(|(_, p)| {
+                // Add a small pseudorandom bias to the score to randomize which page gets evicted
+                // if they have the same score. This could avoid some pathological cases.
+                p.hit_score + (self.rand.next() & 0x1f)
+            })
+            .map(|(index, _)| index)
+            .unwrap();
+
+        info!(
+            "Evict page {} [score: {}] {:x}",
+            ip, self.pages[ip].hit_score, self.pages[ip].base
+        );
+
+        let old_idx = lut_idx(self.pages[ip].base << PAGE_LEN_SHIFT);
+        self.page_lut[old_idx] = None;
+        self.last_used_page = (!0, 0);
+
+        ip
+    }
 }
 
-// Retrieves the page_lut index for the given address.
-//
-// Panics if the address is not in ROM or RAM
+/// Retrieves the page_lut index for the given address.
+///
+/// Panics if the address is not in ROM or RAM
 fn lut_idx(addr: u32) -> usize {
     if let Some(off) = RAM.contains(addr) {
         return (off >> PAGE_LEN_SHIFT) as usize;
@@ -116,7 +152,7 @@ pub fn fetch_instruction(m: &mut NoRa32, pc: u32) -> (Instruction, u32) {
 
     let page = &mut m.cpu.decoder.pages[page_idx];
     // Should never overflow in practice
-    page.hit_score += 1 << 8;
+    page.hit_score += PAGE_LEN_OP as u32;
 
     if page.base != pc_base {
         // That means that `pc` isn't targeting an area we support
@@ -128,8 +164,8 @@ pub fn fetch_instruction(m: &mut NoRa32, pc: u32) -> (Instruction, u32) {
 }
 
 // Decode page at `lut_idx`, store it in the cache and returns its page_idx
-fn decode_page(m: &mut NoRa32, lut_idx: usize) -> usize {
-    let base = lut_idx_to_base(lut_idx);
+fn decode_page(m: &mut NoRa32, lidx: usize) -> usize {
+    let base = lut_idx_to_base(lidx);
 
     let (mem, mem_off) = {
         if let Some(off) = ROM.contains(base) {
@@ -642,21 +678,21 @@ fn decode_page(m: &mut NoRa32, lut_idx: usize) -> usize {
         base: base >> PAGE_LEN_SHIFT,
         // We start with an artificially high hit count to give the page a chance to show its use
         // before it's evicted
-        hit_score: 1 << 16,
+        hit_score: (PAGE_LEN_OP << 4) as u32,
         instructions,
     };
 
     let pl = m.cpu.decoder.pages.len();
 
     if pl < PAGE_CACHE_MAX {
-        let ip = pl;
-
         m.cpu.decoder.pages.push(page);
-        m.cpu.decoder.page_lut[lut_idx] = Some(ip as u16);
-
-        ip
+        m.cpu.decoder.page_lut[lidx] = Some(pl as u16);
+        pl
     } else {
-        panic!("Evict page!");
+        let ip = m.cpu.decoder.evict_page();
+        m.cpu.decoder.pages[ip] = page;
+        m.cpu.decoder.page_lut[lidx] = Some(ip as u16);
+        ip
     }
 }
 
