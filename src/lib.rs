@@ -8,6 +8,7 @@ mod fifo;
 mod gpu;
 mod input_dev;
 mod irq;
+mod simple_rand;
 mod spu;
 mod sync;
 mod systimer;
@@ -143,6 +144,7 @@ impl NoRa32 {
         self.spu.clear_samples();
 
         sync::rebase_counters(self);
+        self.cpu.decoder.expire_pages();
     }
 
     fn tick(&mut self, cycles: CycleCounter) {
