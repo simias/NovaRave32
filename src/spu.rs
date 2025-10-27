@@ -1,4 +1,5 @@
 use super::{CPU_FREQ, CycleCounter, NoRa32, fifo::Fifo, sync};
+use std::ops::{Index, IndexMut};
 
 mod fir;
 
@@ -76,6 +77,20 @@ impl Spu {
     }
 }
 
+impl Index<usize> for Spu {
+    type Output = Voice;
+
+    fn index(&self, port: usize) -> &Self::Output {
+        &self.voices[port as usize]
+    }
+}
+
+impl IndexMut<usize> for Spu {
+    fn index_mut(&mut self, port: usize) -> &mut Self::Output {
+        &mut self.voices[port as usize]
+    }
+}
+
 pub fn run(m: &mut NoRa32) {
     let elapsed = sync::resync(m, SPUSYNC);
 
@@ -118,7 +133,7 @@ pub fn run_audio_cycle(m: &mut NoRa32) {
 pub fn run_voice_cycle(m: &mut NoRa32, voice: usize) -> [i32; 2] {
     run_voice_decoder(m, voice);
 
-    let v = &mut m.spu.voices[voice];
+    let v = &mut m.spu[voice];
 
     let raw_sample = v.next_raw_sample();
 
@@ -178,7 +193,7 @@ pub fn store_word(m: &mut NoRa32, addr: u32, val: u32) {
         1 => {
             for voice in 0..24 {
                 if val & (1 << voice) != 0 {
-                    m.spu.voices[voice].start();
+                    m.spu[voice].start();
                 }
             }
 
@@ -198,7 +213,7 @@ pub fn store_word(m: &mut NoRa32, addr: u32, val: u32) {
                 panic!("Unknown voice {voice}");
             }
 
-            let v = &mut m.spu.voices[voice];
+            let v = &mut m.spu[voice];
 
             match (addr >> 2) & 7 {
                 0 => {
