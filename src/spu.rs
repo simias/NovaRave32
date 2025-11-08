@@ -13,8 +13,6 @@ pub struct Spu {
     ram_ptr: RamIndex,
     /// The 24 voices
     voices: [Voice; 24],
-    /// One bit per voice, set if voice is producing samples
-    voice_on: u32,
     /// Main volume left
     volume_left: i16,
     /// Main volume right
@@ -54,7 +52,6 @@ impl Spu {
                 Voice::new(),
                 Voice::new(),
             ],
-            voice_on: 0,
             volume_left: 0,
             volume_right: 0,
             samples: Vec::new(),
@@ -114,12 +111,10 @@ pub fn run_audio_cycle(m: &mut NoRa32) {
     let mut right = 0i32;
 
     for voice in 0..24 {
-        if m.spu.voice_on & (1 << voice) != 0 {
-            let [l, r] = run_voice_cycle(m, voice);
+        let [l, r] = run_voice_cycle(m, voice);
 
-            left += l;
-            right += r;
-        }
+        left += l;
+        right += r;
     }
 
     m.spu
@@ -131,20 +126,28 @@ pub fn run_audio_cycle(m: &mut NoRa32) {
 }
 
 pub fn run_voice_cycle(m: &mut NoRa32, voice: usize) -> [i32; 2] {
+    if m.spu[voice].adsr.state == AdsrState::Stopped {
+        return [0, 0];
+    }
+
     run_voice_decoder(m, voice);
 
     let v = &mut m.spu[voice];
 
+    if v.adsr.state == AdsrState::Stopped {
+        // We already checked above but it's possible that the voice decoder would have reached the
+        // end of the ADPCM sample and changed the ADSR state.
+        return [0, 0];
+    }
+
     let raw_sample = v.next_raw_sample();
 
-    // XXX do ADSR
-
-    let sample = raw_sample;
+    let sample = v.apply_envelope(raw_sample);
 
     let left = ((v.volume_left as i32) * sample) >> 15;
     let right = ((v.volume_right as i32) * sample) >> 15;
 
-    // XXX run envelope
+    v.run_envelope_cycle();
 
     v.step();
 
@@ -163,7 +166,7 @@ pub fn run_voice_decoder(m: &mut NoRa32, voice: usize) {
                     v.cur_index = v.loop_index;
                 } else {
                     // Disable voice
-                    m.spu.voice_on &= !(1 << voice);
+                    v.adsr.stop();
                     return;
                 }
             }
@@ -190,14 +193,21 @@ pub fn store_word(m: &mut NoRa32, addr: u32, val: u32) {
             m.spu.volume_left = (val >> 16) as i16;
             m.spu.volume_right = val as i16;
         }
+        // Start
         1 => {
             for voice in 0..24 {
                 if val & (1 << voice) != 0 {
                     m.spu[voice].start();
                 }
             }
-
-            m.spu.voice_on |= val;
+        }
+        // Release
+        2 => {
+            for voice in 0..24 {
+                if val & (1 << voice) != 0 {
+                    m.spu[voice].release();
+                }
+            }
         }
         4 => {
             m.spu.ram_ptr = (val >> 1) & !1;
@@ -226,6 +236,12 @@ pub fn store_word(m: &mut NoRa32, addr: u32, val: u32) {
                     v.volume_left = (val >> 16) as i16;
                     v.volume_right = val as i16;
                 }
+                3 => {
+                    v.adsr.set_raw(val);
+                }
+                4 => {
+                    v.adsr.set_level(val as i16);
+                }
                 n => panic!("Unknown SPU register {voice}.{n}"),
             }
         }
@@ -238,6 +254,8 @@ pub struct Voice {
     volume_left: i16,
     /// Voice volume right. Negative volume inverts the phase.
     volume_right: i16,
+    /// Attack Decay Sustain Release envelope
+    adsr: Adsr,
     /// This value configures how fast the samples are played on this voice, which effectively
     /// changes the frequency of the output audio.
     ///
@@ -265,6 +283,7 @@ impl Voice {
         Voice {
             volume_left: 0,
             volume_right: 0,
+            adsr: Adsr::new(),
             step_length: 0,
             phase: 0,
             start_index: 0,
@@ -280,6 +299,11 @@ impl Voice {
         self.cur_index = self.start_index;
         self.phase = 0;
         self.block_header = AdpcmHeader(0);
+        self.adsr.attack();
+    }
+
+    fn release(&mut self) {
+        self.adsr.release();
     }
 
     fn inc_index(&mut self) {
@@ -342,6 +366,357 @@ impl Voice {
 
         fir::filter(phase, samples)
     }
+
+    /// Run one cycle for the ADSR envelope function
+    fn run_envelope_cycle(&mut self) {
+        self.adsr.run_cycle();
+    }
+
+    /// Apply the Attack Decay Sustain Release envelope to a sample
+    fn apply_envelope(&self, sample: i32) -> i32 {
+        let level = i32::from(self.adsr.level);
+
+        (sample * level) >> 15
+    }
+}
+
+/// Attack Decay Sustain Release envelope
+struct Adsr {
+    state: AdsrState,
+    /// Current audio level for this envelope
+    level: i16,
+    /// Divider used to count until the next envelope step
+    divider: u16,
+    /// Pre-computed envelope parameters for all 4 ADSR states
+    params: [EnvelopeParams; 4],
+    /// Volume level used to trigger the switch from Decay to Sustain mode
+    sustain_level: i16,
+    /// Config register value
+    config: AdsrConfig,
+}
+
+impl Adsr {
+    fn new() -> Adsr {
+        let mut adsr = Adsr {
+            state: AdsrState::Stopped,
+            level: 0,
+            divider: 0,
+            params: [
+                EnvelopeParams::new(),
+                EnvelopeParams::new(),
+                EnvelopeParams::new(),
+                EnvelopeParams::new(),
+            ],
+            sustain_level: 0,
+            config: AdsrConfig(0),
+        };
+
+        // Not really needed but it's probably cleaner to make sure that `params` and `config`
+        // remain always in sync
+        adsr.refresh_params();
+
+        adsr
+    }
+
+    fn stop(&mut self) {
+        self.state = AdsrState::Stopped;
+    }
+
+    fn set_level(&mut self, level: i16) {
+        self.level = level;
+    }
+
+    fn set_raw(&mut self, v: u32) {
+        self.config = AdsrConfig(v);
+        self.refresh_params();
+    }
+
+    /// Refresh the pre-computed `params`
+    fn refresh_params(&mut self) {
+        self.sustain_level = self.config.sustain_level();
+        self.params[AdsrState::Attack as usize] = self.config.attack_params();
+        self.params[AdsrState::Decay as usize] = self.config.decay_params();
+        self.params[AdsrState::Sustain as usize] = self.config.sustain_params();
+        self.params[AdsrState::Release as usize] = self.config.release_params();
+    }
+
+    fn run_cycle(&mut self) {
+        let params = &self.params[self.state as usize];
+
+        let div_step = params.compute_divider_step(self.level);
+        debug_assert!(div_step > 0);
+
+        // `div_step`'s max value should be 0x8000, so the addition should never overflow
+        debug_assert!(div_step <= 0x8000);
+        self.divider += div_step;
+
+        if self.divider < 0x8000 {
+            // We haven't reached the next step yet.
+            return;
+        }
+
+        // Next step reached
+        self.divider = 0;
+
+        let level_step = params.compute_level_step(self.level);
+
+        self.level = self.level.wrapping_add(level_step);
+
+        if self.level < 0 {
+            // Overflow or underflow
+            self.level = if level_step > 0 { i16::max_value() } else { 0 };
+        }
+
+        if self.state == AdsrState::Decay && self.level <= self.sustain_level {
+            self.state = AdsrState::Sustain;
+        }
+
+        if self.state == AdsrState::Release && self.level == 0 {
+            self.state = AdsrState::Stopped;
+        }
+    }
+
+    fn release(&mut self) {
+        self.divider = 0;
+        self.state = AdsrState::Release;
+    }
+
+    fn attack(&mut self) {
+        self.divider = 0;
+        self.state = AdsrState::Attack;
+        self.level = 0;
+    }
+}
+
+/// Parameters used to configure an envelope function
+struct EnvelopeParams {
+    /// Base divider step value (how fast do we reach the next step).
+    divider_step: u16,
+    /// Base level step value
+    level_step: i16,
+    /// Envelope mode that modifies the way the steps are calculated
+    mode: EnvelopeMode,
+}
+
+impl EnvelopeParams {
+    fn new() -> EnvelopeParams {
+        EnvelopeParams {
+            divider_step: 0,
+            level_step: 0,
+            mode: EnvelopeMode::Linear,
+        }
+    }
+
+    /// Compute (divider_step, level_step) for the given `shift` and `step` values
+    fn steps(shift: u32, step: i8) -> (u16, i16) {
+        let step = step as i16;
+
+        if shift < 11 {
+            (0x8000, step << (11 - shift))
+        } else {
+            let div_shift = shift - 11;
+
+            if div_shift <= 15 {
+                (0x8000 >> div_shift, step)
+            } else {
+                (1, step)
+            }
+        }
+    }
+
+    fn compute_divider_step(&self, cur_level: i16) -> u16 {
+        match self.mode {
+            EnvelopeMode::SmoothUp { divider_step, .. } => {
+                if cur_level >= 0x6000 {
+                    divider_step
+                } else {
+                    self.divider_step
+                }
+            }
+            _ => self.divider_step,
+        }
+    }
+
+    fn compute_level_step(&self, cur_level: i16) -> i16 {
+        match self.mode {
+            EnvelopeMode::Linear => self.level_step,
+            EnvelopeMode::Exponential => {
+                let ls = self.level_step as i32;
+                let cl = cur_level as i32;
+
+                ((ls * cl) >> 15) as i16
+            }
+            EnvelopeMode::SmoothUp { level_step, .. } => {
+                if cur_level >= 0x6000 {
+                    level_step
+                } else {
+                    self.level_step
+                }
+            }
+        }
+    }
+}
+
+#[derive(PartialEq, Eq, Debug)]
+enum EnvelopeMode {
+    /// Divider and Volume steps remain the same throughout
+    Linear,
+    /// Behaves linearly up until volume reaches 0x6000, then the divider_step is replaced by the
+    /// first tuple param and the level_step is replaced by the 2nd parameter
+    SmoothUp { divider_step: u16, level_step: i16 },
+    /// Volume steps are multiplied by the current value of the volume, resulting in
+    /// exponentially bigger steps (in absolute value)
+    Exponential,
+}
+
+impl EnvelopeMode {
+    /// Compute the parameters for smooth mode
+    fn smooth_mode(step: u32, base_divider: u16, base_level: i16) -> EnvelopeMode {
+        let mut smooth_divider = if step > 10 && base_divider > 3 {
+            base_divider >> 2
+        } else if step >= 10 && base_divider > 1 {
+            base_divider >> 1
+        } else {
+            base_divider
+        };
+
+        if smooth_divider == 0 {
+            smooth_divider = 1;
+        }
+
+        let smooth_level = if step < 10 {
+            base_level >> 2
+        } else if step == 10 {
+            base_level >> 1
+        } else {
+            base_level
+        };
+
+        EnvelopeMode::SmoothUp {
+            divider_step: smooth_divider,
+            level_step: smooth_level,
+        }
+    }
+}
+
+/// ADRS register config
+///
+/// Layout:
+///   [30:26] - Release shift
+///   [25]    - Release exponential
+///   [24:21] - Sustain level
+///   [20:19] - Sustain step
+///   [18:14] - Sustain shift
+///   [13]    - Sustain decrease
+///   [12]    - Sustain exponential
+///   [11:8]  - Decay   shift
+///   [7:6]   - Attack  step
+///   [5:1]   - Attack  shift
+///   [0]     - Attack  exponential
+#[derive(Copy, Clone)]
+struct AdsrConfig(u32);
+
+impl AdsrConfig {
+    fn sustain_level(self) -> i16 {
+        let sl = (self.0 >> 21) & 0xf;
+
+        let sl = ((sl + 1) << 11) - 1;
+
+        debug_assert!(sl < 0x8000);
+
+        sl as i16
+    }
+
+    fn attack_params(self) -> EnvelopeParams {
+        let shift = (self.0 >> 1) & 0x1f;
+        let step = 7 - ((self.0 >> 6) & 3);
+        let exp = (self.0 & 1) != 0;
+
+        let (div_step, lvl_step) = EnvelopeParams::steps(shift, step as i8);
+
+        let mode = if exp {
+            EnvelopeMode::smooth_mode(step, div_step, lvl_step)
+        } else {
+            EnvelopeMode::Linear
+        };
+
+        EnvelopeParams {
+            divider_step: div_step,
+            level_step: lvl_step,
+            mode,
+        }
+    }
+
+    fn decay_params(self) -> EnvelopeParams {
+        let shift = (self.0 >> 8) & 0xf;
+        let step = -8;
+
+        let (div_step, ls) = EnvelopeParams::steps(shift, step);
+
+        EnvelopeParams {
+            divider_step: div_step,
+            level_step: ls,
+            mode: EnvelopeMode::Exponential,
+        }
+    }
+
+    fn sustain_params(self) -> EnvelopeParams {
+        let shift = (self.0 >> 14) & 0x1f;
+        let raw_step = 7 - ((self.0 >> 19) & 3);
+        let exp = (self.0 >> 12) & 1 != 0;
+        let inv_step = (self.0 >> 13) & 1 != 0;
+
+        let step = if inv_step { !raw_step } else { raw_step };
+
+        let (div_step, lvl_step) = EnvelopeParams::steps(shift, step as i8);
+
+        let mode = if exp {
+            if inv_step {
+                EnvelopeMode::Exponential
+            } else {
+                EnvelopeMode::smooth_mode(raw_step, div_step, lvl_step)
+            }
+        } else {
+            EnvelopeMode::Linear
+        };
+
+        EnvelopeParams {
+            divider_step: div_step,
+            level_step: lvl_step,
+            mode,
+        }
+    }
+
+    fn release_params(self) -> EnvelopeParams {
+        let shift = (self.0 >> 26) & 0x1f;
+        let step = -8;
+        let exp = (self.0 >> 25) & 1 != 0;
+
+        let (div_step, lvl_step) = EnvelopeParams::steps(shift, step as i8);
+
+        let mode = if exp {
+            EnvelopeMode::Exponential
+        } else {
+            EnvelopeMode::Linear
+        };
+
+        EnvelopeParams {
+            divider_step: div_step,
+            level_step: lvl_step,
+            mode,
+        }
+    }
+}
+
+/// Possible ADSR states
+#[derive(Copy, Clone, PartialEq, Eq, Debug)]
+enum AdsrState {
+    Attack,
+    Decay,
+    Sustain,
+    Release,
+    /// Voice isn't running
+    Stopped,
 }
 
 /// The first two bytes of a 16-byte ADPCM block
