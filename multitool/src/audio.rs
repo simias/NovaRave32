@@ -3,7 +3,7 @@ use byteorder::{LittleEndian, ReadBytesExt, WriteBytesExt};
 use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
 use rubato::{FftFixedIn, Resampler};
 use std::fs::File;
-use std::io::{Seek, SeekFrom, Write};
+use std::io::{Read, Seek, SeekFrom, Write};
 use std::path::Path;
 use std::sync::Mutex;
 use std::sync::{
@@ -64,7 +64,7 @@ impl AudioBuffer {
             })
         } else {
             let mut buf = if is_nrad {
-                AudioBuffer::from_nrad_file(file)
+                AudioBuffer::from_nrad_reader(file)
             } else {
                 AudioBuffer::from_file(file, channel)
             }?;
@@ -86,7 +86,7 @@ impl AudioBuffer {
         }
     }
 
-    pub fn from_nrad_file(mut audio_file: File) -> Result<AudioBuffer> {
+    pub fn from_nrad_reader<R: Read>(mut audio_file: R) -> Result<AudioBuffer> {
         let magic = audio_file.read_u32::<LittleEndian>()?;
 
         if magic != 0x4441524e {
@@ -109,7 +109,7 @@ impl AudioBuffer {
         })
     }
 
-    fn decode_nrad_raw(mut audio_file: File) -> Result<(Vec<i16>, Option<u32>)> {
+    fn decode_nrad_raw<R: Read>(mut audio_file: R) -> Result<(Vec<i16>, Option<u32>)> {
         let mut samples = Vec::new();
 
         let mut prev_samples = [0, 0];

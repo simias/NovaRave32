@@ -6,6 +6,7 @@ extern crate anyhow;
 mod audio;
 mod cart;
 mod model;
+mod score;
 mod utils;
 
 use anyhow::Result;
@@ -81,6 +82,25 @@ enum Commands {
         /// Start offset in the input file (in seconds)
         #[arg(long)]
         start: Option<f32>,
+    },
+    /// Processes music score files
+    Score {
+        /// The score file to process
+        input_file: PathBuf,
+
+        /// Offset (in bytes) to skip from the start of the SPU RAM before storing the first sample
+        /// data
+        #[arg(long, default_value_t = 0)]
+        sram_offset: usize,
+
+        /// Attempt to optimize the generated file (merge redundant operations, remove unused
+        /// samples etc...)
+        #[arg(long, default_value_t = false)]
+        optimize: bool,
+
+        /// The resulting score file
+        #[arg(short, long)]
+        output: Option<PathBuf>,
     },
     /// Build cartridge image
     Cart {
@@ -175,6 +195,23 @@ fn main() -> Result<()> {
                 info!("Dumping audio to {}", out.display());
                 let mut out = BufWriter::new(File::create(out)?);
                 buf.dump_nrad(&mut out)?
+            }
+        }
+        Commands::Score {
+            input_file,
+            optimize,
+            sram_offset,
+            output,
+        } => {
+            let _ = optimize;
+            let _ = output;
+
+            let score = score::Score::from_nras_path(input_file)?;
+
+            if let Some(out) = output {
+                info!("Dumping NRAS to {}", out.display());
+                let mut out = BufWriter::new(File::create(out)?);
+                score.dump_nras(&mut out, sram_offset)?
             }
         }
         Commands::Cart {
