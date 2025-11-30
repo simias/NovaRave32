@@ -106,7 +106,15 @@ fn run_dma_cycles(m: &mut NoRa32, mut cycles: CycleCounter) -> CycleCounter {
 
         while let Some(v) = m.dma.buf.front() {
             let res = match dst_target {
-                DmaTarget::Memory => todo!(),
+                DmaTarget::Memory => {
+                    if let Some(off) = RAM.contains(m.dma.dst.raw()) {
+                        m.ram[(off >> 2) as usize] = v;
+                        m.dma.dst.0 = m.dma.dst.0.wrapping_add(4);
+                        DmaResult::Ok
+                    } else {
+                        todo!()
+                    }
+                }
                 DmaTarget::Gpu => gpu::dma_store(m, v),
             };
 

@@ -96,6 +96,8 @@ impl NrHeap {
             return ptr::null_mut();
         }
 
+        // Note: for DMA-compatibility, the alignment of returned memory blocks should be at least
+        // 4byte.
         let size = align_up(size, MemBlock::ALIGN);
 
         for b in self.block_iter() {
