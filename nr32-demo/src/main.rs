@@ -9,6 +9,7 @@ use core::time::Duration;
 
 use alloc::sync::Arc;
 use nr32_sys::allocator;
+use nr32_sys::dma::{DmaAddr, do_dma};
 use nr32_sys::fs::Fs;
 use nr32_sys::gpu::send_to_gpu;
 use nr32_sys::math::{
@@ -16,7 +17,8 @@ use nr32_sys::math::{
     matrix::{MAT0, MAT1, MAT2, MAT3, MAT4, MAT5, MAT7},
 };
 use nr32_sys::sync::{Fifo, Semaphore};
-use nr32_sys::syscall::{DmaAddr, ThreadBuilder, do_dma, input_device, sleep, wait_for_vsync};
+use nr32_sys::syscall::{input_device, sleep, wait_for_vsync};
+use nr32_sys::thread::ThreadBuilder;
 
 #[global_allocator]
 static ALLOCATOR: allocator::Allocator = allocator::Allocator::new();
@@ -34,7 +36,9 @@ mod panic_handler {
 }
 
 struct DmaOp {
-    _v: usize,
+    from: DmaAddr,
+    to: DmaAddr,
+    len_words: usize,
     dma_done: Option<Arc<Semaphore>>,
 }
 
@@ -49,9 +53,9 @@ pub extern "C" fn nr32_main() {
 
     info!("Loaded FS: {}", fs.fsck().unwrap());
 
-    let fifo: Arc<Fifo<DmaOp, 8>> = Arc::new(Fifo::new());
+    let dma_fifo: Arc<Fifo<DmaOp, 8>> = Arc::new(Fifo::new());
 
-    let fifo_c = fifo.clone();
+    let fifo_c = dma_fifo.clone();
 
     ThreadBuilder::new()
         .stack_size(1024)
@@ -60,6 +64,16 @@ pub extern "C" fn nr32_main() {
             info!("DMA task start");
             loop {
                 let c = fifo_c.as_ref().pop();
+
+                let r = do_dma(c.from, c.to, c.len_words);
+
+                if let Err(e) = r {
+                    error!(
+                        "DMA {:?} -> {:?} [{}W] failed: {:?}",
+                        c.from, c.to, c.len_words, e
+                    );
+                }
+
                 if let Some(s) = c.dma_done {
                     s.post();
                 }
@@ -109,18 +123,9 @@ pub extern "C" fn nr32_main() {
 
     let mut prev_touch: Option<(u16, u16)> = None;
 
-    let s = Arc::new(Semaphore::new(0));
+    let render_done = Arc::new(Semaphore::new(0));
 
-    let mut c = 1000;
     loop {
-        let _ = fifo.as_ref().try_push(DmaOp {
-            _v: c,
-            dma_done: Some(s.clone()),
-        });
-        c += 1;
-
-        s.wait();
-
         let touch = read_touch_screen();
 
         if let (Some(p), Some(t)) = (prev_touch, touch) {
@@ -167,18 +172,20 @@ pub extern "C" fn nr32_main() {
         matrix::multiply(mvp_mat, p_mat, v_mat);
         matrix::multiply(mvp_mat, mvp_mat, m_mat);
 
-        do_dma(
-            DmaAddr::from_memory(ship.as_ptr() as usize).unwrap(),
-            DmaAddr::GPU,
-            ship.len() / 4,
-        )
-        .unwrap();
-        do_dma(
-            DmaAddr::from_memory(beach.as_ptr() as usize).unwrap(),
-            DmaAddr::GPU,
-            beach.len() / 4,
-        )
-        .unwrap();
+        dma_fifo.as_ref().push(DmaOp {
+            from: DmaAddr::from_memory(ship.as_ptr() as usize).unwrap(),
+            to: DmaAddr::GPU,
+            len_words: ship.len() / 4,
+            dma_done: None,
+        });
+        dma_fifo.as_ref().push(DmaOp {
+            from: DmaAddr::from_memory(beach.as_ptr() as usize).unwrap(),
+            to: DmaAddr::GPU,
+            len_words: beach.len() / 4,
+            dma_done: Some(render_done.clone()),
+        });
+
+        render_done.wait();
 
         // End draw
         send_to_gpu(0x02 << 24);

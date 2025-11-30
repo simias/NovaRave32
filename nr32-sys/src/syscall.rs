@@ -1,10 +1,8 @@
-use alloc::boxed::Box;
 use core::alloc::Layout;
 use core::arch::asm;
 use core::ptr::NonNull;
 use core::sync::atomic::AtomicUsize;
 use core::time::Duration;
-pub use nr32_common::syscall::DmaAddr;
 use nr32_common::syscall::*;
 
 /// Frequency of the MTIME timer tick
@@ -32,10 +30,6 @@ pub fn sleep(duration: Duration) {
 
 pub fn wait_for_vsync() {
     unsafe { syscall_0(SYS_WAIT_FOR_VSYNC).unwrap() };
-}
-
-pub fn spawn_task(f: fn(), prio: i32) -> SysResult<usize> {
-    unsafe { syscall_2(SYS_SPAWN_TASK, f as usize, prio as usize) }
 }
 
 pub fn exit() -> ! {
@@ -97,99 +91,6 @@ pub fn futex_wake(atomic: &AtomicUsize, nwake: usize) -> SysResult<usize> {
     unsafe { syscall_2(SYS_FUTEX_WAKE, atomic as *const _ as usize, nwake) }
 }
 
-#[derive(Copy, Clone)]
-pub struct ThreadBuilder {
-    priority: i32,
-    stack_size: usize,
-    /// Global pointer. Defaults to the builder thread's current GP.
-    gp: usize,
-}
-
-impl ThreadBuilder {
-    #[inline(never)]
-    pub fn new() -> ThreadBuilder {
-        let gp: usize;
-        unsafe {
-            asm!("mv {0}, gp", out(reg) gp);
-        }
-
-        ThreadBuilder {
-            priority: 0,
-            gp,
-            stack_size: 4096,
-        }
-    }
-
-    pub fn stack_size(mut self, stack_size: usize) -> ThreadBuilder {
-        self.stack_size = stack_size;
-
-        self
-    }
-
-    pub fn gp(mut self, gp: usize) -> ThreadBuilder {
-        self.gp = gp;
-
-        self
-    }
-
-    pub fn priority(mut self, priority: i32) -> ThreadBuilder {
-        self.priority = priority;
-
-        self
-    }
-
-    pub fn spawn<F>(self, f: F) -> SysResult<usize>
-    where
-        F: FnOnce() + Send + 'static,
-    {
-        // Box the closure before sending it to the kernel
-        let closure: Box<dyn FnOnce()> = Box::new(f);
-        let closure: *mut dyn FnOnce() = Box::into_raw(closure);
-
-        let trampoline = Self::trampoline::<F>;
-
-        unsafe {
-            syscall_5(
-                SYS_SPAWN_TASK,
-                trampoline as usize,
-                closure as *mut u8 as usize,
-                self.priority as usize,
-                self.stack_size,
-                self.gp,
-            )
-        }
-    }
-
-    unsafe extern "C" fn trampoline<F>(closure: *mut F)
-    where
-        F: FnOnce(),
-    {
-        unsafe {
-            let closure: Box<F> = Box::from_raw(closure);
-
-            (*closure)()
-        }
-    }
-}
-
-impl Default for ThreadBuilder {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
-pub fn do_dma(source: DmaAddr, target: DmaAddr, len_words: usize) -> SysResult<()> {
-    unsafe {
-        syscall_3(
-            SYS_DO_DMA,
-            source.raw() as usize,
-            target.raw() as usize,
-            len_words,
-        )
-    }
-    .map(|_| ())
-}
-
 unsafe fn syscall_0(code: u32) -> SysResult<usize> {
     let mut arg0;
     let mut arg1;
@@ -234,7 +135,12 @@ unsafe fn syscall_2(code: u32, mut arg0: usize, mut arg1: usize) -> SysResult<us
     check_syscall_return(arg0, arg1)
 }
 
-unsafe fn syscall_3(code: u32, mut arg0: usize, mut arg1: usize, arg2: usize) -> SysResult<usize> {
+pub(crate) unsafe fn syscall_3(
+    code: u32,
+    mut arg0: usize,
+    mut arg1: usize,
+    arg2: usize,
+) -> SysResult<usize> {
     unsafe {
         asm!("ecall",
             in("a7") code,
@@ -269,7 +175,7 @@ unsafe fn syscall_4(
     check_syscall_return(arg0, arg1)
 }
 
-unsafe fn syscall_5(
+pub(crate) unsafe fn syscall_5(
     code: u32,
     mut arg0: usize,
     mut arg1: usize,

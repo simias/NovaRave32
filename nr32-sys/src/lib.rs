@@ -7,9 +7,11 @@ extern crate alloc;
 
 pub mod adler32;
 pub mod allocator;
+pub mod dma;
 pub mod fs;
 pub mod gpu;
 pub mod logger;
 pub mod math;
 pub mod sync;
 pub mod syscall;
+pub mod thread;
