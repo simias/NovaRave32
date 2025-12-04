@@ -154,7 +154,7 @@ pub extern "C" fn handle_ecall(
     arg2: usize,
     arg3: usize,
     arg4: usize,
-    _arg5: usize,
+    arg5: usize,
     _arg6: usize,
     sys_no: usize,
 ) -> ECallRet {
@@ -186,8 +186,17 @@ pub extern "C" fn handle_ecall(
             let prio = arg2 as i32;
             let stack_size = arg3;
             let gp = arg4;
+            let name = arg5.to_le_bytes();
 
-            sched.spawn_task(scheduler::TaskType::User, entry, data, prio, stack_size, gp)
+            sched.spawn_task(
+                scheduler::TaskType::User,
+                entry,
+                data,
+                prio,
+                stack_size,
+                gp,
+                name,
+            )
         }
         syscall::SYS_EXIT => {
             sched.exit_current_task();
@@ -219,8 +228,9 @@ pub extern "C" fn handle_ecall(
 
             let buf = unsafe { core::slice::from_raw_parts(ptr, len) };
             let tid = sched.cur_task_id();
+            let name = sched.cur_task_name();
 
-            let _ = write!(console::DebugConsole, "#{tid} ");
+            let _ = write!(console::DebugConsole, "{tid}.{name} ");
             for b in buf {
                 console::DebugConsole::putchar(*b);
             }

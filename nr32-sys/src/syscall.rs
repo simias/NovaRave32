@@ -175,13 +175,14 @@ unsafe fn syscall_4(
     check_syscall_return(arg0, arg1)
 }
 
-pub(crate) unsafe fn syscall_5(
+pub(crate) unsafe fn syscall_6(
     code: u32,
     mut arg0: usize,
     mut arg1: usize,
     arg2: usize,
     arg3: usize,
     arg4: usize,
+    arg5: usize,
 ) -> SysResult<usize> {
     unsafe {
         asm!("ecall",
@@ -191,6 +192,7 @@ pub(crate) unsafe fn syscall_5(
             in("a2") arg2,
             in("a3") arg3,
             in("a4") arg4,
+            in("a5") arg5,
             clobber_abi("C"),
         );
     }

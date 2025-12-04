@@ -42,13 +42,25 @@ impl Scheduler {
 
         // Create the idle task.
         let idle_task = unsafe { core::mem::transmute::<usize, fn()>(_idle_task as usize) };
-        self.spawn_task(TaskType::System, idle_task as usize, 0, i32::MIN, 0, 0)
-            .unwrap();
+        self.spawn_task(
+            TaskType::System,
+            idle_task as usize,
+            0,
+            i32::MIN,
+            0,
+            0,
+            *b"IDLE",
+        )
+        .unwrap();
         self.switch_to_task(0);
     }
 
     pub fn cur_task_id(&self) -> usize {
         self.cur_task
+    }
+
+    pub fn cur_task_name(&self) -> &str {
+        self.tasks[self.cur_task].name()
     }
 
     pub fn cur_task_prio(&self) -> i32 {
@@ -63,6 +75,7 @@ impl Scheduler {
         prio: i32,
         stack_size: usize,
         gp: usize,
+        name: [u8; 4],
     ) -> SysResult<TaskId> {
         let (stack, sp) = stack_alloc(ty, stack_size + BANKED_REGISTER_LEN)?;
 
@@ -74,6 +87,7 @@ impl Scheduler {
             ty,
             stack,
             run_ticks: 0,
+            name,
         };
 
         new_task.set_banked_reg(Reg::A0, data);
@@ -305,7 +319,8 @@ impl Scheduler {
 
         for (i, t) in self.tasks.iter_mut().enumerate() {
             let pcent = (t.run_ticks * 100 + span / 2) / span;
-            info!("Task #{i} CPU: {pcent}%");
+            let name = t.name();
+            info!("Task {i}.{name} CPU: {pcent}%");
             tot += t.run_ticks;
             t.run_ticks = 0;
         }
@@ -377,6 +392,8 @@ struct Task {
     stack: NonNull<u8>,
     /// Total number of MTIME ticks this time has been running since the last stat dump
     run_ticks: u64,
+    /// Human-readable ASCII identifier
+    name: [u8; 4],
 }
 
 unsafe impl Send for Task {}
@@ -397,6 +414,13 @@ impl Task {
 
         // The layout should match the banking scheme in asm.rs
         unsafe { *(sp.add(32 - reg as usize)) = v };
+    }
+
+    fn name(&self) -> &str {
+        match str::from_utf8(&self.name) {
+            Ok(s) => s,
+            Err(_) => "????",
+        }
     }
 }
 

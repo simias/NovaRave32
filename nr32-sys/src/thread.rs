@@ -1,4 +1,4 @@
-use crate::syscall::{SysResult, syscall_5};
+use crate::syscall::{SysResult, syscall_6};
 use alloc::boxed::Box;
 use core::arch::asm;
 use nr32_common::syscall::SYS_SPAWN_TASK;
@@ -9,11 +9,12 @@ pub struct ThreadBuilder {
     stack_size: usize,
     /// Global pointer. Defaults to the builder thread's current GP.
     gp: usize,
+    name: [u8; 4],
 }
 
 impl ThreadBuilder {
     #[inline(never)]
-    pub fn new() -> ThreadBuilder {
+    pub fn new(name: [u8; 4]) -> ThreadBuilder {
         let gp: usize;
         unsafe {
             asm!("mv {0}, gp", out(reg) gp);
@@ -23,6 +24,7 @@ impl ThreadBuilder {
             priority: 0,
             gp,
             stack_size: 4096,
+            name,
         }
     }
 
@@ -55,13 +57,14 @@ impl ThreadBuilder {
         let trampoline = Self::trampoline::<F>;
 
         unsafe {
-            syscall_5(
+            syscall_6(
                 SYS_SPAWN_TASK,
                 trampoline as usize,
                 closure as *mut u8 as usize,
                 self.priority as usize,
                 self.stack_size,
                 self.gp,
+                u32::from_le_bytes(self.name) as usize,
             )
         }
     }
@@ -75,11 +78,5 @@ impl ThreadBuilder {
 
             (*closure)()
         }
-    }
-}
-
-impl Default for ThreadBuilder {
-    fn default() -> Self {
-        Self::new()
     }
 }

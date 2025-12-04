@@ -15,6 +15,7 @@ pub const SYS_WAIT_FOR_VSYNC: u32 = 0x02;
 /// - a2: priority
 /// - a3: stack pointer
 /// - a4: global pointer
+/// - a5: 4 byte ASCII identifier (little-endian)
 pub const SYS_SPAWN_TASK: u32 = 0x03;
 
 /// Kills the current thread

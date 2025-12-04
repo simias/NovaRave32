@@ -57,7 +57,7 @@ pub extern "C" fn nr32_main() {
 
     let fifo_c = dma_fifo.clone();
 
-    ThreadBuilder::new()
+    ThreadBuilder::new(*b"DMA ")
         .stack_size(1024)
         .priority(-1)
         .spawn(move || {
@@ -249,7 +249,7 @@ fn start_audio(fs: Fs) {
     spu_voice_start_block(0, 0);
     spu_voice_start_block(1, 0);
 
-    ThreadBuilder::new()
+    ThreadBuilder::new(*b"TON0")
         .stack_size(1024)
         .priority(1)
         .spawn(move || {
@@ -272,7 +272,7 @@ fn start_audio(fs: Fs) {
         })
         .unwrap();
 
-    ThreadBuilder::new()
+    ThreadBuilder::new(*b"TON1")
         .stack_size(1024)
         .priority(1)
         .spawn(move || {
