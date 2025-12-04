@@ -51,6 +51,10 @@ impl Scheduler {
         self.cur_task
     }
 
+    pub fn cur_task_prio(&self) -> i32 {
+        self.tasks[self.cur_task].prio
+    }
+
     pub fn spawn_task(
         &mut self,
         ty: TaskType,
@@ -85,6 +89,10 @@ impl Scheduler {
 
         // No dead task, create a new one
         self.tasks.push(new_task);
+
+        if self.cur_task_prio() < prio {
+            self.schedule();
+        }
 
         Ok(self.tasks.len() - 1)
     }
@@ -234,7 +242,7 @@ impl Scheduler {
             return Err(SysError::Invalid);
         }
 
-        let cur_prio = self.tasks[self.cur_task].prio;
+        let cur_prio = self.cur_task_prio();
 
         let mut needs_schedule = false;
         let mut nawoken = 0;
